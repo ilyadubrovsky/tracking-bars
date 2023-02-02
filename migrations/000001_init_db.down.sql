@@ -1,0 +1,2 @@
+DROP TABLE IF EXISTS changes;
+DROP TABLE IF EXISTS users;

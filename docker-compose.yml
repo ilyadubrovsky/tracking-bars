@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  app:
+    build: ./
+    command: ./wait-for-postgres.sh db ./app
+    depends_on:
+      - db
+    environment:
+      - DB_PASSWORD=12345678
+  db:
+    restart: always
+    image: postgres:13.3
+    volumes:
+      - ./.database/postgres/data:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"
+    environment:
+      - POSTGRES_HOST=localhost
+      - POSTGRES_DB=trackingbars
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=12345678
