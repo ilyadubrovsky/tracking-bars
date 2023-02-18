@@ -1,10 +1,10 @@
 package main
 
 import (
-	"TrackingBARSv2/internal/app"
-	"TrackingBARSv2/internal/config"
-	"TrackingBARSv2/pkg/logging"
 	"github.com/joho/godotenv"
+	"tracking-barsv1.1/internal/app"
+	"tracking-barsv1.1/internal/config"
+	"tracking-barsv1.1/pkg/logging"
 )
 
 func main() {
