@@ -1,28 +1,46 @@
 package app
 
 import (
-	"TrackingBARSv2/internal/config"
-	"TrackingBARSv2/internal/entity/change"
-	"TrackingBARSv2/internal/entity/user"
-	"TrackingBARSv2/internal/service/bars"
-	storage "TrackingBARSv2/internal/storage/postgresql"
-	"TrackingBARSv2/pkg/client/postgresql"
-	"TrackingBARSv2/pkg/logging"
 	"context"
+	"errors"
 	tele "gopkg.in/telebot.v3"
 	"gopkg.in/telebot.v3/middleware"
 	"os"
 	"strconv"
 	"time"
+	"tracking-barsv1.1/internal/config"
+	"tracking-barsv1.1/internal/entity/change"
+	"tracking-barsv1.1/internal/entity/user"
+	"tracking-barsv1.1/internal/service/bars"
+	"tracking-barsv1.1/internal/service/telegram"
+	storage "tracking-barsv1.1/internal/storage/postgresql"
+	"tracking-barsv1.1/pkg/client/postgresql"
+	"tracking-barsv1.1/pkg/logging"
 )
 
+type TelegramService interface {
+	GetProgressTableByID(ctx context.Context, userID int64) (*user.ProgressTable, error)
+	LogoutUserByID(ctx context.Context, userID int64) error
+	DeleteUserByID(ctx context.Context, userID int64) error
+	GetAllUsers(ctx context.Context, aq ...string) ([]user.User, error)
+	GetUserByID(ctx context.Context, userID int64) (*user.User, error)
+}
+
+type BarsService interface {
+	Start()
+	Authorization(ctx context.Context, userID int64, username, password string) (bool, error)
+	GetProgressTable(ctx context.Context, client bars.Client) (user.ProgressTable, error)
+	CheckChanges(ctx context.Context, usr user.User)
+}
+
 type app struct {
-	bot            *tele.Bot
-	barsService    bars.Service
-	usersStorage   user.Repository
-	changesStorage change.Repository
-	cfg            *config.Config
-	logger         logging.Logger
+	bot             *tele.Bot
+	barsService     BarsService
+	telegramService TelegramService
+	usersStorage    user.Repository
+	changesStorage  change.Repository
+	cfg             *config.Config
+	logger          *logging.Logger
 }
 
 type App interface {
@@ -31,7 +49,6 @@ type App interface {
 
 func NewApp(cfg *config.Config) (App, error) {
 	var a app
-
 	a.cfg = cfg
 
 	a.logger = logging.GetLogger()
@@ -43,7 +60,7 @@ func NewApp(cfg *config.Config) (App, error) {
 		os.Getenv("PG_HOST"), os.Getenv("PG_PORT"), os.Getenv("PG_DATABASE"))
 	postgresqlClient, err := postgresql.NewClient(context.Background(), pgConfig)
 	if err != nil {
-		a.logger.Errorf("failed to connection to postgresql due error: %s", err)
+		a.logger.Errorf("failed to connection to postgresql due error: %v", err)
 		return nil, err
 	}
 
@@ -54,13 +71,15 @@ func NewApp(cfg *config.Config) (App, error) {
 	a.logger.Info("telegram bot initializing")
 	bot, err := a.createBot()
 	if err != nil {
-		a.logger.Errorf("failed to initializing a telegram bot due error: %s", err)
+		a.logger.Errorf("failed to initializing a telegram bot due error: %v", err)
 		return nil, err
 	}
 	a.bot = bot
 
 	a.logger.Info("BARS service initializing")
 	a.barsService = bars.NewService(cfg, a.usersStorage, a.changesStorage, a.logger, bot)
+
+	a.telegramService = telegram.NewService(a.logger, a.cfg, a.usersStorage, a.changesStorage)
 
 	return &a, nil
 }
@@ -102,11 +121,15 @@ func (a *app) createBot() (*tele.Bot, error) {
 
 	adminGroup.Handle("/echo", a.handleEchoCommand)
 
-	adminGroup.Handle("/sendnews", a.handleSendnewsCommand)
+	adminGroup.Handle("/sendnewsall", a.handleSendnewsAllCommand)
+
+	adminGroup.Handle("/sendnewsauth", a.handleSendNewsAuthCommand)
 
 	adminGroup.Handle("/sendmsg", a.handleSendmsgCommand)
 
-	adminGroup.Handle("/deluser", a.handleDeluserCommand)
+	adminGroup.Handle("/logoutuser", a.handleLogoutUserCommand)
+
+	adminGroup.Handle("/deleteuser", a.handleDeleteUserCommand)
 
 	return abot, nil
 }
@@ -124,17 +147,13 @@ func (a *app) Run() error {
 }
 
 func (a *app) OnBotError(err error, c tele.Context) {
-	a.logger.Errorf("failed to execute bot instructions: %s", err)
+	a.logger.Errorf("failed to execute bot instructions: %v", err)
 	a.logger.Debugf("Chat: %d, Message: %s", c.Sender().ID, c.Message().Text)
 
-	switch err.Error() {
-	case tele.ErrMessageNotModified.Description:
-		if err2 := c.Send(a.cfg.Messages.BotError); err2 != nil {
-			a.logger.Errorf("failed to send an error response message due error: %s", err)
+	if errors.Is(err, tele.ErrMessageNotModified) {
+		if err2 := c.Send(a.cfg.Responses.BotError); err2 != nil {
+			a.logger.Errorf("failed to send an error response message due error: %v", err2)
 		}
-	case tele.ErrBlockedByUser.Description, tele.ErrUserIsDeactivated.Description:
-		if err2 := a.usersStorage.Delete(context.Background(), c.Sender().ID); err2 != nil {
-			a.logger.Errorf("failed to Delete blocked user from database due error: %s", err)
-		}
+		return
 	}
 }

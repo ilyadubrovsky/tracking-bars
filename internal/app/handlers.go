@@ -1,40 +1,39 @@
 package app
 
 import (
-	"TrackingBARSv2/internal/entity/user"
-	"TrackingBARSv2/pkg/client/bars"
-	"TrackingBARSv2/pkg/utils/aes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	tele "gopkg.in/telebot.v3"
-	"os"
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
+	"tracking-barsv1.1/internal/entity/user"
 )
 
 var ErrIncorrectUserData = errors.New("the received user data is incorrect")
 
 func (a *app) handleCallback(c tele.Context) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
 	callbackData := strings.Replace(c.Callback().Data, "\f", "", -1)
 	if callbackData[:2] != "pt" {
-		return c.Send(a.cfg.Messages.BotError)
+		return c.Send(a.cfg.Responses.BotError)
 	}
 
-	usr, err := a.usersStorage.FindOne(context.Background(), c.Sender().ID)
+	usr, err := a.telegramService.GetUserByID(ctx, c.Sender().ID)
 	if err != nil {
-		a.logger.Errorf("failed to FindOne due error: %s", err)
-		return c.Send(a.cfg.Messages.BotError)
+		return c.Send(a.cfg.Responses.BotError)
 	}
 
-	if usr.Deleted == true || usr.ID != c.Sender().ID {
-		return c.Edit(a.cfg.Messages.Bars.NotAuthorized)
+	if usr == nil {
+		return c.Edit(a.cfg.Responses.Bars.NotAuthorized)
 	}
 
 	if len(usr.ProgressTable.Tables) == 0 {
-		return c.Edit(a.cfg.Messages.Bars.UnavailablePT)
+		return c.Edit(a.cfg.Responses.Bars.UnavailablePT)
 	}
 
 	if callbackData[2:] == "back" {
@@ -44,17 +43,24 @@ func (a *app) handleCallback(c tele.Context) error {
 		return c.Edit(msg, "Markdown", progressTableInlineMarkup)
 	}
 
+	if callbackData[2:] == "show" {
+		return c.Respond(&tele.CallbackResponse{
+			Text: "Эта функция совсем скоро появится!",
+		})
+	}
+
 	n, err := strconv.Atoi(callbackData[2:])
 	if err != nil {
-		return c.Edit(a.cfg.Messages.BotError)
+		return c.Edit(a.cfg.Responses.BotError)
 	}
 
 	if n <= 0 || n > len(usr.ProgressTable.Tables) {
-		return c.Edit(a.cfg.Messages.Bars.UnavailablePT)
+		return c.Edit(a.cfg.Responses.Bars.UnavailablePT)
 	}
 
 	ptBackInlineMarkup := makePtBackInlineMarkup()
-	return c.Edit(usr.ProgressTable.Tables[n-1].String(), "Markdown", ptBackInlineMarkup)
+
+	return c.Edit(hideStNames(&usr.ProgressTable.Tables[n-1]).String(), "Markdown", ptBackInlineMarkup)
 }
 
 func (a *app) handleStartCommand(c tele.Context) error {
@@ -70,129 +76,87 @@ func (a *app) handleHelpCommand(c tele.Context) error {
 }
 
 func (a *app) handleAuthCommand(c tele.Context) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
 	if c.Message().Payload == "" {
-		return c.Send(a.cfg.Messages.Bars.NoDataEntered)
+		return c.Send(a.cfg.Responses.Bars.NoDataEntered)
 	}
 
 	if len(strings.Split(c.Message().Payload, " ")) != 2 {
-		return c.Send(a.cfg.Messages.Bars.EntryFormIgnored)
+		return c.Send(a.cfg.Responses.Bars.EntryFormIgnored)
 	}
 
 	userData := strings.Split(c.Message().Payload, " ")
 	username := userData[0]
 	password := userData[1]
 
-	if err := validateUserData(username); err == ErrIncorrectUserData {
-		return c.Send(a.cfg.Messages.Bars.DataEnteredIncorrectly)
+	if err := validateUserData(username); errors.Is(err, ErrIncorrectUserData) {
+		return c.Send(a.cfg.Responses.Bars.DataEnteredIncorrectly)
 	}
 
-	usr, err := a.usersStorage.FindOne(context.Background(), c.Sender().ID)
+	usr, err := a.telegramService.GetUserByID(ctx, c.Sender().ID)
 	if err != nil {
-		a.logger.Errorf("failed to FindOne due error: %s", err)
-		return c.Send(a.cfg.Messages.BotError)
-	}
-	if usr.Deleted == false && usr.ID == c.Sender().ID {
-		return c.Send(a.cfg.Messages.Bars.AlreadyAuthorized)
+		return c.Send(a.cfg.Responses.BotError)
 	}
 
-	client := bars.NewClient(a.cfg.Bars.URLs.RegistrationURL)
-
-	err = client.Authorization(context.Background(), username, password)
-
-	if err == bars.ErrNoAuth {
-		return c.Send(a.cfg.Messages.Bars.WrongData)
+	if usr != nil && usr.ID == c.Sender().ID && usr.Deleted == false {
+		return c.Send(a.cfg.Responses.Bars.AlreadyAuthorized)
 	}
+
+	status, err := a.barsService.Authorization(ctx, c.Sender().ID, username, password)
 	if err != nil {
-		a.logger.Errorf("failed to Authorization the user due error: %s", err)
-		return c.Send(a.cfg.Messages.Bars.Error)
+		return c.Send(a.cfg.Responses.BotError)
 	}
 
-	encryptedPassword, err := aes.EncryptAES([]byte(os.Getenv("ENCRYPTION_KEY")), []byte(password))
-	if err != nil {
-		a.logger.Warningf("failed to encrypt (EncryptAES) a password due error: %s", err)
-		a.logger.Debugf("UserID: %d\n", c.Sender().ID)
-		return c.Send(a.cfg.Messages.BotError)
+	if !status {
+		return c.Send(a.cfg.Responses.Bars.WrongData)
 	}
 
-	pt, err := a.barsService.GetProgressTable(context.Background(), client)
-	if err != nil {
-		a.logger.Errorf("failed to GetProgressTables due error: %s", err)
-		a.logger.Debugf("UserID %d", c.Sender().ID)
-		return c.Send(a.cfg.Messages.BotError)
-	}
-
-	ptBytes, err := json.Marshal(pt)
-	if err != nil {
-		a.logger.Errorf("failed to marshal a struct due error: %s", err)
-		a.logger.Debugf("UserID: %d\n Progress Table: %s\n", usr.ID, pt)
-		return c.Send(a.cfg.Messages.BotError)
-	}
-
-	if usr.Deleted == true {
-		usrDTO := user.UpdateUserDTO{
-			ID:            c.Sender().ID,
-			Username:      username,
-			Password:      encryptedPassword,
-			ProgressTable: string(ptBytes),
-			Deleted:       false,
-		}
-		err = a.usersStorage.Update(context.Background(), usrDTO)
-	} else {
-		usrDTO := user.CreateUserDTO{
-			ID:            c.Sender().ID,
-			Username:      username,
-			Password:      encryptedPassword,
-			ProgressTable: string(ptBytes),
-		}
-		err = a.usersStorage.Create(context.Background(), usrDTO)
-	}
-	if err != nil {
-		a.logger.Errorf("failed to Create/Update due error: %s", err)
-		a.logger.Debugf("User ID: %d, Username: %s, \n EncryptedPassword: %s, \n", usr.ID, usr.Username, usr.Password)
-		return c.Send(a.cfg.Messages.BotError)
-	}
-
-	return c.Send(a.cfg.Messages.Bars.SuccessfulAuthorization)
+	return c.Send(a.cfg.Responses.Bars.SuccessfulAuthorization)
 }
 
 func (a *app) handleLogoutCommand(c tele.Context) error {
-	usr, err := a.usersStorage.FindOne(context.Background(), c.Sender().ID)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	usr, err := a.telegramService.GetUserByID(ctx, c.Sender().ID)
 	if err != nil {
-		a.logger.Errorf("failed to FindOne due error: %s", err)
-		return c.Send(a.cfg.Messages.BotError)
+		return c.Send(a.cfg.Responses.BotError)
 	}
 
-	if usr.Deleted == true || usr.ID != c.Sender().ID {
-		return c.Send(a.cfg.Messages.Bars.NotAuthorized)
+	if usr == nil {
+		return c.Send(a.cfg.Responses.Bars.NotAuthorized)
 	}
 
-	if err := a.usersStorage.Delete(context.Background(), c.Sender().ID); err != nil {
-		a.logger.Errorf("failed to Delete due error: %s", err)
-		return c.Send(a.cfg.Messages.BotError)
+	if err = a.telegramService.LogoutUserByID(ctx, c.Sender().ID); err != nil {
+		return c.Send(a.cfg.Responses.BotError)
 	}
 
-	return c.Send(a.cfg.Messages.Bars.SuccessfulLogout)
+	return c.Send(a.cfg.Responses.Bars.SuccessfulLogout)
 }
 
 func (a *app) handlePtCommand(c tele.Context) error {
-	usr, err := a.usersStorage.FindOne(context.Background(), c.Sender().ID)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	progressTable, err := a.telegramService.GetProgressTableByID(ctx, c.Sender().ID)
+
 	if err != nil {
-		a.logger.Errorf("failed to FindOne due error: %s", err)
-		return c.Send(a.cfg.Messages.BotError)
+		return c.Send(a.cfg.Responses.BotError)
 	}
 
-	if usr.Deleted == true || usr.ID != c.Sender().ID {
-		return c.Send(a.cfg.Messages.Bars.NotAuthorized)
+	if progressTable == nil {
+		return c.Send(a.cfg.Responses.Bars.NotAuthorized)
 	}
 
-	if len(usr.ProgressTable.Tables) == 0 {
-		return c.Send(a.cfg.Messages.Bars.UnavailablePT)
+	if len(progressTable.Tables) == 0 {
+		return c.Send(a.cfg.Responses.Bars.UnavailablePT)
 	}
 
-	progressTableInlineMarkup := makePtInlineMarkup(&usr.ProgressTable)
-
-	msg := retrieveTablesData(usr.ProgressTable.Tables)
-	return c.Send(msg, "Markdown", progressTableInlineMarkup)
+	return c.Send(retrieveTablesData(progressTable.Tables),
+		"Markdown",
+		makePtInlineMarkup(progressTable),
+	)
 }
 
 func (a *app) handleGhCommand(c tele.Context) error {
@@ -200,7 +164,7 @@ func (a *app) handleGhCommand(c tele.Context) error {
 }
 
 func (a *app) handleText(c tele.Context) error {
-	return c.Send(a.cfg.Messages.Bars.DefaultAnswer)
+	return c.Send(a.cfg.Responses.Bars.DefaultAnswer)
 }
 
 func (a *app) handleEchoCommand(c tele.Context) error {
@@ -208,13 +172,39 @@ func (a *app) handleEchoCommand(c tele.Context) error {
 	return c.Send(msg, "Markdown")
 }
 
-func (a *app) handleSendnewsCommand(c tele.Context) error {
-	msg := strings.Replace(c.Message().Text, "/sendnews ", "", -1)
-	users, err := a.usersStorage.FindAll(context.Background())
+func (a *app) handleSendnewsAllCommand(c tele.Context) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	msg := strings.Replace(c.Message().Text, "/sendnewsall ", "", -1)
+
+	users, err := a.telegramService.GetAllUsers(ctx)
 	if err != nil {
-		a.logger.Errorf("failed to FindAll due error: %s", err)
-		return c.Send(a.cfg.Messages.BotError)
+		return c.Send(a.cfg.Responses.BotError)
 	}
+
+	for _, usr := range users {
+		_, err = a.bot.Send(tele.ChatID(usr.ID), msg)
+		if err != nil {
+			a.logger.Errorf("failed to send a news due error: %s", err)
+			a.logger.Debugf("UserID: %d, News: %s", usr.ID, msg)
+		}
+	}
+
+	return nil
+}
+
+func (a *app) handleSendNewsAuthCommand(c tele.Context) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	msg := strings.Replace(c.Message().Text, "/sendnewsauth ", "", -1)
+
+	users, err := a.telegramService.GetAllUsers(ctx, "WHERE deleted = false")
+	if err != nil {
+		return c.Send(a.cfg.Responses.BotError)
+	}
+
 	for _, usr := range users {
 		_, err = a.bot.Send(tele.ChatID(usr.ID), msg)
 		if err != nil {
@@ -234,7 +224,7 @@ func (a *app) handleSendmsgCommand(c tele.Context) error {
 
 	userID, err := strconv.Atoi(msg[1])
 	if err != nil {
-		return c.Send(a.cfg.Messages.BotError)
+		return c.Send(a.cfg.Responses.BotError)
 	}
 
 	text := strings.Join(msg[2:], " ")
@@ -242,23 +232,47 @@ func (a *app) handleSendmsgCommand(c tele.Context) error {
 	if err != nil {
 		return err
 	}
+
 	return c.Send(fmt.Sprintf("Пользователю %d успешно отправлено сообщение:\n %s", userID, text))
 }
 
-func (a *app) handleDeluserCommand(c tele.Context) error {
+func (a *app) handleLogoutUserCommand(c tele.Context) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
 	msg := strings.Split(c.Message().Text, " ")
 	if len(msg) < 2 {
-		return c.Send("Команда не содержит ID удаляемого пользователя.")
+		return c.Send("Команда не содержит ID пользователя.")
 	}
 
 	userID, err := strconv.Atoi(msg[1])
 	if err != nil {
-		return c.Send(a.cfg.Messages.BotError)
+		return c.Send(a.cfg.Responses.BotError)
 	}
 
-	if err = a.usersStorage.Delete(context.Background(), int64(userID)); err != nil {
-		a.logger.Errorf("failed to Delete due error: %s", err)
-		return c.Send(a.cfg.Messages.BotError)
+	if err = a.telegramService.LogoutUserByID(ctx, int64(userID)); err != nil {
+		return c.Send(a.cfg.Responses.BotError)
+	}
+
+	return c.Send(fmt.Sprintf("Удаление авторизационных данных пользователя %d прошло успешно.", userID))
+}
+
+func (a *app) handleDeleteUserCommand(c tele.Context) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	msg := strings.Split(c.Message().Text, " ")
+	if len(msg) < 2 {
+		return c.Send("Команда не содержит ID пользователя.")
+	}
+
+	userID, err := strconv.Atoi(msg[1])
+	if err != nil {
+		return c.Send(a.cfg.Responses.BotError)
+	}
+
+	if err = a.telegramService.DeleteUserByID(ctx, int64(userID)); err != nil {
+		return c.Send(a.cfg.Responses.BotError)
 	}
 
 	return c.Send(fmt.Sprintf("Удаление пользователя %d прошло успешно.", userID))
@@ -326,13 +340,30 @@ func makePtInlineMarkup(ptObject *user.ProgressTable) *tele.ReplyMarkup {
 }
 
 func makePtBackInlineMarkup() *tele.ReplyMarkup {
+	showButton := tele.InlineButton{
+		Unique: "ptshow",
+		Text:   "Показать названия КМов",
+	}
+
 	backButton := tele.InlineButton{
 		Unique: "ptback",
 		Text:   "Назад",
 	}
-	keyboard := make([][]tele.InlineButton, 1)
-	keyboard[0] = append(keyboard[0], backButton)
+	keyboard := make([][]tele.InlineButton, 2)
+	keyboard[0] = append(keyboard[0], showButton)
+	keyboard[1] = append(keyboard[1], backButton)
 	return &tele.ReplyMarkup{
 		InlineKeyboard: keyboard,
 	}
+}
+
+func hideStNames(st *user.SubjectTable) *user.SubjectTable {
+	for i := range st.Rows {
+		if !(strings.HasPrefix(st.Rows[i].Name, "Балл текущего контроля") ||
+			strings.HasPrefix(st.Rows[i].Name, "Итоговая оценка:") ||
+			strings.HasPrefix(st.Rows[i].Name, "Промежуточная аттестация")) {
+			st.Rows[i].Name = fmt.Sprintf("КМ-%d", i+1)
+		}
+	}
+	return st
 }

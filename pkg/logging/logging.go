@@ -9,6 +9,16 @@ import (
 	"runtime"
 )
 
+var e *logrus.Entry
+
+type Logger struct {
+	*logrus.Entry
+}
+
+func GetLogger() *Logger {
+	return &Logger{e}
+}
+
 type writerHook struct {
 	Writer    []io.Writer
 	LogLevels []logrus.Level
@@ -29,16 +39,6 @@ func (hook *writerHook) Fire(entry *logrus.Entry) error {
 	return err
 }
 
-var e *logrus.Entry
-
-type Logger struct {
-	*logrus.Entry
-}
-
-func GetLogger() Logger {
-	return Logger{e}
-}
-
 func init() {
 
 	l := logrus.New()
@@ -52,8 +52,7 @@ func init() {
 		FullTimestamp: true,
 	}
 
-	err := os.MkdirAll("logs", 0644)
-	if err != nil {
+	if err := os.MkdirAll("logs", 0644); err != nil {
 		panic(err)
 	}
 

@@ -10,7 +10,7 @@ CREATE TABLE "users"
 CREATE TABLE "changes"
 (
     id           BIGSERIAL NOT NULL PRIMARY KEY,
-    user_id      BIGINT    NOT NULL REFERENCES "users" (id),
+    user_id      BIGINT    NOT NULL REFERENCES "users" (id) ON DELETE CASCADE,
     subject      TEXT      NOT NULL,
     control_event TEXT     NOT NULL,
     old_grade    TEXT      NOT NULL,

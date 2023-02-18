@@ -1,20 +1,20 @@
 package storage
 
 import (
-	"TrackingBARSv2/internal/entity/user"
-	"TrackingBARSv2/pkg/client/postgresql"
-	"TrackingBARSv2/pkg/logging"
 	"context"
 	"fmt"
 	"github.com/jackc/pgx/v4"
+	"tracking-barsv1.1/internal/entity/user"
+	"tracking-barsv1.1/pkg/client/postgresql"
+	"tracking-barsv1.1/pkg/logging"
 )
 
 type usersPostgres struct {
 	client postgresql.Client
-	logger logging.Logger
+	logger *logging.Logger
 }
 
-func NewUsersPostgres(client postgresql.Client, logger logging.Logger) user.Repository {
+func NewUsersPostgres(client postgresql.Client, logger *logging.Logger) user.Repository {
 	return &usersPostgres{
 		client: client,
 		logger: logger,
@@ -26,8 +26,8 @@ func (s *usersPostgres) Create(ctx context.Context, dto user.CreateUserDTO) erro
 	_, err := s.client.Exec(ctx, q, dto.ID, dto.Username, dto.Password, dto.ProgressTable)
 	if err != nil {
 		s.logger.Tracef("SQL: %s", q)
-		s.logger.Debugf("ID: %d\nUsername: %s\n Password: %s\n", dto.ID, dto.Username, dto.Password)
-		return fmt.Errorf("failed to Exec due error: %s", err)
+		s.logger.Debugf("UserID: %d\n, Username:%s\n, Password:%s\n, Progress Table:%s\n", dto.ID, dto.Username, dto.Password, dto.ProgressTable)
+		return fmt.Errorf("failed to Exec due error: %v", err)
 	}
 	return nil
 }
@@ -43,7 +43,6 @@ func (s *usersPostgres) FindAll(ctx context.Context, aq ...string) ([]user.User,
 	usersRows, err := s.client.Query(ctx, q)
 	if err != nil {
 		s.logger.Tracef("SQL: %s", q)
-		s.logger.Debugf("Raw Values: %s", usersRows.RawValues())
 		return nil, fmt.Errorf("failed to Query due error: %s", err)
 	}
 
@@ -54,7 +53,6 @@ func (s *usersPostgres) FindAll(ctx context.Context, aq ...string) ([]user.User,
 		err = usersRows.Scan(&usr.ID, &usr.Username, &usr.Password, &usr.ProgressTable, &usr.Deleted)
 		if err != nil {
 			s.logger.Tracef("SQL: %s", q)
-			s.logger.Debugf("Raw Values: %s", usersRows.RawValues())
 			return nil, fmt.Errorf("failed to Scan when reading Rows due error: %s", err)
 		}
 
@@ -63,7 +61,6 @@ func (s *usersPostgres) FindAll(ctx context.Context, aq ...string) ([]user.User,
 
 	if err = usersRows.Err(); err != nil {
 		s.logger.Tracef("SQL: %s", q)
-		s.logger.Debugf("Raw Values: %s", usersRows.RawValues())
 		return nil, fmt.Errorf("failed to handle Rows due error: %s", err)
 	}
 
@@ -80,7 +77,7 @@ func (s *usersPostgres) FindOne(ctx context.Context, id int64) (user.User, error
 		return user.User{}, nil
 	}
 	if err != nil {
-		s.logger.Debugf("UserID: %d", id)
+		s.logger.Tracef("SQL: %s", q)
 		return user.User{}, fmt.Errorf("failed to Scan when reading a Rows due error: %s", err)
 	}
 	return usr, nil
@@ -91,18 +88,17 @@ func (s *usersPostgres) Update(ctx context.Context, dto user.UpdateUserDTO) erro
 	_, err := s.client.Exec(ctx, q, dto.ID, dto.Username, dto.Password, dto.ProgressTable, dto.Deleted)
 	if err != nil {
 		s.logger.Tracef("SQL: %s", q)
-		s.logger.Debugf("UserID: %d\n,Username:%s\n,Password:%s\n,Progress Table:%s\n", dto.ID, dto.Username, dto.Password, dto.ProgressTable)
+		s.logger.Debugf("UserID: %d\n, Username:%s\n, Password:%s\n, Progress Table:%s\n", dto.ID, dto.Username, dto.Password, dto.ProgressTable)
 		return fmt.Errorf("failed to Exec due error: %s", err)
 	}
 	return nil
 }
 
 func (s *usersPostgres) Delete(ctx context.Context, id int64) error {
-	q := `UPDATE users SET password = DEFAULT, progress_table = DEFAULT, deleted = true WHERE id = $1`
+	q := `DELETE from users WHERE id = $1`
 	_, err := s.client.Exec(ctx, q, id)
 	if err != nil {
 		s.logger.Tracef("SQL: %s", q)
-		s.logger.Debugf("UserID: %d", id)
 		return fmt.Errorf("failed to Exec due error: %s", err)
 	}
 	return nil

@@ -1,24 +1,25 @@
 package bars
 
 import (
-	"TrackingBARSv2/internal/config"
-	"TrackingBARSv2/internal/entity/change"
-	"TrackingBARSv2/internal/entity/user"
-	"TrackingBARSv2/pkg/client/bars"
-	"TrackingBARSv2/pkg/logging"
-	"TrackingBARSv2/pkg/utils/aes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/PuerkitoBio/goquery"
-	"gopkg.in/telebot.v3"
+	tele "gopkg.in/telebot.v3"
+	"io"
 	"net/http"
 	"os"
 	"regexp"
 	"strings"
 	"sync"
 	"time"
+	"tracking-barsv1.1/internal/config"
+	"tracking-barsv1.1/internal/entity/change"
+	"tracking-barsv1.1/internal/entity/user"
+	"tracking-barsv1.1/pkg/client/bars"
+	"tracking-barsv1.1/pkg/logging"
+	"tracking-barsv1.1/pkg/utils/aes"
 )
 
 var (
@@ -27,21 +28,20 @@ var (
 	replacedString        = regexp.MustCompile("\\s+")
 )
 
-type Service interface {
-	Start()
-	GetProgressTable(ctx context.Context, client bars.Client) (user.ProgressTable, error)
-	CheckChanges(usr user.User)
+type Client interface {
+	GetPage(ctx context.Context, method string, url string, body io.Reader) (*http.Response, error)
+	Authorization(ctx context.Context, username, password string) error
 }
 
-type service struct {
-	bot            *telebot.Bot
+type Service struct {
+	bot            *tele.Bot
 	usersStorage   user.Repository
 	changesStorage change.Repository
 	cfg            *config.Config
-	logger         logging.Logger
+	logger         *logging.Logger
 }
 
-func (s *service) Start() {
+func (s *Service) Start() {
 	delay := time.Duration(s.cfg.Bars.ParserDelayInSeconds) * time.Second
 	s.logger.Info("BARS service: start")
 
@@ -57,7 +57,7 @@ func (s *service) Start() {
 
 		for _, usr := range usrs {
 			wg.Add(1)
-			go s.CheckChanges(usr)
+			go s.CheckChanges(context.Background(), usr)
 		}
 
 		wg.Wait()
@@ -67,27 +67,25 @@ func (s *service) Start() {
 	}
 }
 
-func (s *service) GetProgressTable(ctx context.Context, client bars.Client) (user.ProgressTable, error) {
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-
+func (s *Service) GetProgressTable(ctx context.Context, client Client) (user.ProgressTable, error) {
 	response, err := client.GetPage(ctx, http.MethodGet, s.cfg.Bars.URLs.MainPageURL, nil)
 	if err != nil {
-		s.logger.Debugf("Status code: %d,\n Response body: %s\n Response header: %s", response.StatusCode, response.Body, response.Header)
-		return user.ProgressTable{}, fmt.Errorf("failed to get a page due error: %s", err)
+		s.logger.Errorf("failed to get a page due error: %v", err)
+		return user.ProgressTable{}, err
 	}
 
 	document, err := goquery.NewDocumentFromReader(response.Body)
 	if err != nil {
-		return user.ProgressTable{}, fmt.Errorf("failed to create a document from the response body due error: %s", err)
+		s.logger.Errorf("failed to create a document from the response body due error: %v", err)
+		return user.ProgressTable{}, err
 	}
 
 	ptLength := document.Find("tbody").Length()
 	ptObject := user.ProgressTable{Tables: make([]user.SubjectTable, ptLength)}
 
-	getSubjectTableData(document, &ptObject)
+	retrieveSubjectTablesData(document, &ptObject)
 
-	getSubjectTableNames(document, &ptObject)
+	retrieveSubjectTableNames(document, &ptObject)
 
 	if err = ptObject.ValidateData(); err == user.ErrIncorrectData {
 		return user.ProgressTable{}, err
@@ -97,25 +95,55 @@ func (s *service) GetProgressTable(ctx context.Context, client bars.Client) (use
 }
 
 // CheckChanges TODO fix leaked changes (attempt to resend)
-func (s *service) CheckChanges(usr user.User) {
+func (s *Service) CheckChanges(ctx context.Context, usr user.User) {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
 	defer wg.Done()
 
-	client := bars.NewClient(s.cfg.Bars.URLs.RegistrationURL)
-
-	if err := s.authorizeUser(&usr, client); err != nil {
+	decryptedPassword, err := aes.DecryptAES([]byte(os.Getenv("ENCRYPTION_KEY")), usr.Password)
+	if err != nil {
+		s.logger.Errorf("failed to decrypt a password (DecryptAES) due error: %s", err)
 		return
 	}
 
-	progressTableParser, err := s.GetProgressTable(context.Background(), client)
+	client, err := s.authorizeUser(ctx, usr.Username, decryptedPassword)
+	if errors.Is(err, bars.ErrNoAuth) {
+		usrDTO := user.UpdateUserDTO{
+			ID:            usr.ID,
+			Username:      usr.Username,
+			Password:      []byte{},
+			ProgressTable: "{}",
+			Deleted:       true,
+		}
+		if err2 := s.usersStorage.Update(ctx, usrDTO); err2 != nil {
+			s.logger.Errorf("failed to Update due error: %s", err2)
+			s.logger.Errorf("UserID: %d, Username: %s, Password: %x\n ProgressTable: %s\n", usrDTO.ID, usrDTO.Username, usrDTO.Password, usrDTO.ProgressTable)
+			return
+		}
+		_, err2 := s.bot.Send(tele.ChatID(usr.ID), s.cfg.Responses.Bars.ExpiredData)
+		if err2 != nil {
+			s.logger.Tracef("UserID: %d\n Message: %s", usr.ID, s.cfg.Responses.Bars.ExpiredData)
+			s.logger.Errorf("failed to send a message due error: %s", err2)
+			return
+		}
+		return
+	} else if err != nil {
+		s.logger.Errorf("failed to Authorization method due error: %s", err)
+		s.logger.Debugf("UserID: %d\n Username:%s\n Password:%x\n", usr.ID, usr.Username, usr.Password)
+		return
+	}
+
+	progressTableParser, err := s.GetProgressTable(ctx, client)
 	if err != nil {
 		s.logger.Errorf("failed to GetProgressTable method due error: %s", err)
 		return
 	}
 
-	tableDataChanges, err := compare(usr.ProgressTable, progressTableParser)
+	tableDataChanges, err := compareProgressTables(usr.ProgressTable, progressTableParser)
 	if err == ErrStructurePtChanged {
-		if err2 := s.updateUser(&usr, &progressTableParser); err2 != nil {
-			s.logger.Errorf("failed to update user due error: %s", err)
+		if err2 := s.updateUserInDB(ctx, &usr, &progressTableParser); err2 != nil {
+			s.logger.Errorf("failed to update user due error: %s", err2)
 		}
 		return
 	} else if err != nil {
@@ -127,17 +155,19 @@ func (s *service) CheckChanges(usr user.User) {
 		return
 	}
 
-	if err = s.updateUser(&usr, &progressTableParser); err != nil {
+	if err = s.updateUserInDB(ctx, &usr, &progressTableParser); err != nil {
+		s.logger.Errorf("%v", err)
 		return
 	}
 
 	for _, tdc := range tableDataChanges {
-		if err = s.createChange(usr.ID, &tdc); err != nil {
+		if err = s.createChangeInDB(ctx, usr.ID, &tdc); err != nil {
+			s.logger.Errorf("%v", err)
 			return
 		}
 
 		msg := fmt.Sprintf("*Получено изменение:*\n\n%s\n\n", tdc.String())
-		_, err = s.bot.Send(telebot.ChatID(usr.ID), msg, "Markdown")
+		_, err = s.bot.Send(tele.ChatID(usr.ID), msg, "Markdown")
 		if err != nil {
 			s.logger.Errorf("failed to send a message with the change to the user due error: %s", err)
 			continue
@@ -145,39 +175,88 @@ func (s *service) CheckChanges(usr user.User) {
 	}
 }
 
-func (s *service) authorizeUser(usr *user.User, client bars.Client) error {
-	decryptedPassword, err := aes.DecryptAES([]byte(os.Getenv("ENCRYPTION_KEY")), usr.Password)
+func (s *Service) Authorization(ctx context.Context, userID int64, username, password string) (bool, error) {
+	usr, err := s.usersStorage.FindOne(ctx, userID)
 	if err != nil {
-		s.logger.Errorf("failed to decrypt a password (DecryptAES) due error: %s", err)
-		return err
+		s.logger.Errorf("failed to FindOne due error: %v", err)
+		return false, err
 	}
 
-	if err = client.Authorization(context.Background(), usr.Username, decryptedPassword); err == bars.ErrNoAuth {
-		if err2 := s.usersStorage.Delete(context.Background(), usr.ID); err2 != nil {
-			s.logger.Errorf("failed to Delete due error: %s", err)
-			return err
-		}
-
-		_, err2 := s.bot.Send(telebot.ChatID(usr.ID), s.cfg.Messages.Bars.ExpiredData)
-		if err2 != nil {
-			s.logger.Debugf("UserID: %d\n Message: %s", usr.ID, s.cfg.Messages.Bars.ExpiredData)
-			s.logger.Errorf("failed to send a message due error: %s", err2)
-			return err2
-		}
+	client, err := s.authorizeUser(ctx, username, password)
+	if errors.Is(err, bars.ErrNoAuth) {
+		return false, nil
 	} else if err != nil {
-		s.logger.Errorf("failed to Authorization method due error: %s", err)
-		s.logger.Debugf("UserID: %d\nUsername:%s\nPassword:%x\n", usr.ID, usr.Username, usr.Password)
-		return err
+		s.logger.Tracef("UserID: %d, username: %s", userID, username)
+		s.logger.Errorf("failed to authorizeUser method due error: %v", err)
+		s.logger.Debugf("Username:%s\n Password: %x\n", username, password)
+		return false, err
 	}
 
-	return nil
-}
+	encryptedPassword, err := aes.EncryptAES([]byte(os.Getenv("ENCRYPTION_KEY")), []byte(password))
+	if err != nil {
+		s.logger.Tracef("UserID: %d, username: %s", userID, username)
+		s.logger.Errorf("failed to encrypt a password due error: %v", err)
+		return false, err
+	}
 
-func (s *service) updateUser(usr *user.User, pt *user.ProgressTable) error {
+	pt, err := s.GetProgressTable(ctx, client)
+	if err != nil {
+		s.logger.Tracef("UserID: %d, username: %s", userID, username)
+		s.logger.Errorf("failed to GetProgressTable method due error: %v", err)
+		return false, err
+	}
+
 	ptBytes, err := json.Marshal(pt)
 	if err != nil {
-		s.logger.Errorf("failed to marshal the structure received from the parser due error: %s", err)
-		return err
+		s.logger.Errorf("failed to marshal the structure received from the parser due error: %v", err)
+		return false, err
+	}
+
+	if usr.Deleted == true {
+		usrDTO := user.UpdateUserDTO{
+			ID:            userID,
+			Username:      username,
+			Password:      encryptedPassword,
+			ProgressTable: string(ptBytes),
+			Deleted:       false,
+		}
+		err = s.usersStorage.Update(ctx, usrDTO)
+	} else {
+		usrDTO := user.CreateUserDTO{
+			ID:            userID,
+			Username:      username,
+			Password:      encryptedPassword,
+			ProgressTable: string(ptBytes),
+		}
+		err = s.usersStorage.Create(ctx, usrDTO)
+	}
+
+	if err != nil {
+		s.logger.Errorf("failed to Create/Update due error: %v", err)
+		return false, err
+	}
+
+	return true, nil
+}
+
+func (s *Service) authorizeUser(ctx context.Context, username, password string) (Client, error) {
+	client := bars.NewClient(s.cfg.Bars.URLs.RegistrationURL)
+
+	if err := client.Authorization(ctx, username, password); err == bars.ErrNoAuth {
+		return &bars.Client{}, err
+	} else if err != nil {
+		s.logger.Tracef("username: %s", username)
+		s.logger.Errorf("failed to Authorization client method due error: %s", err)
+		return &bars.Client{}, err
+	}
+
+	return client, nil
+}
+
+func (s *Service) updateUserInDB(ctx context.Context, usr *user.User, pt *user.ProgressTable) error {
+	ptBytes, err := json.Marshal(pt)
+	if err != nil {
+		return fmt.Errorf("failed to marshal the structure received from the parser due error: %v", err)
 	}
 
 	usrDTO := user.UpdateUserDTO{
@@ -187,30 +266,29 @@ func (s *service) updateUser(usr *user.User, pt *user.ProgressTable) error {
 		ProgressTable: string(ptBytes),
 		Deleted:       false,
 	}
-	if err = s.usersStorage.Update(context.Background(), usrDTO); err != nil {
-		return err
+	if err = s.usersStorage.Update(ctx, usrDTO); err != nil {
+		return fmt.Errorf("failed to Update due error: %v", err)
 	}
 
 	return nil
 }
 
-func (s *service) createChange(userID int64, tdc *change.Change) error {
-	if err := s.changesStorage.Create(context.Background(), change.CreateChangeDTO{
+func (s *Service) createChangeInDB(ctx context.Context, userID int64, tdc *change.Change) error {
+	if err := s.changesStorage.Create(ctx, change.CreateChangeDTO{
 		UserID:       userID,
 		Subject:      tdc.Subject,
 		ControlEvent: tdc.ControlEvent,
 		OldGrade:     tdc.OldGrade,
 		NewGrade:     tdc.NewGrade,
 	}); err != nil {
-		s.logger.Errorf("failed to Create due error: %s", err)
-		return err
+		return fmt.Errorf("failed to Create due error: %v", err)
 	}
 
 	return nil
 }
 
-func NewService(cfg *config.Config, usersStorage user.Repository, changesStorage change.Repository, logger logging.Logger, bot *telebot.Bot) *service {
-	return &service{
+func NewService(cfg *config.Config, usersStorage user.Repository, changesStorage change.Repository, logger *logging.Logger, bot *tele.Bot) *Service {
+	return &Service{
 		usersStorage:   usersStorage,
 		changesStorage: changesStorage,
 		cfg:            cfg,
@@ -219,7 +297,7 @@ func NewService(cfg *config.Config, usersStorage user.Repository, changesStorage
 	}
 }
 
-func compare(pt user.ProgressTable, newpt user.ProgressTable) ([]change.Change, error) {
+func compareProgressTables(pt user.ProgressTable, newpt user.ProgressTable) ([]change.Change, error) {
 	var tdc []change.Change
 	if len(pt.Tables) != len(newpt.Tables) {
 		return nil, ErrStructurePtChanged
@@ -229,6 +307,9 @@ func compare(pt user.ProgressTable, newpt user.ProgressTable) ([]change.Change, 
 			return nil, ErrStructurePtChanged
 		}
 		for j, strow := range st.Rows {
+			if strow.Name != newpt.Tables[i].Rows[j].Name {
+				return nil, ErrStructurePtChanged
+			}
 			if strow.Grades != newpt.Tables[i].Rows[j].Grades &&
 				!strings.HasPrefix(strow.Name, "Балл текущего контроля") {
 				tdc = append(tdc, change.Change{
@@ -243,13 +324,16 @@ func compare(pt user.ProgressTable, newpt user.ProgressTable) ([]change.Change, 
 	return tdc, nil
 }
 
-func getSubjectTableNames(document *goquery.Document, ptObject *user.ProgressTable) {
+func retrieveSubjectTableNames(document *goquery.Document, ptObject *user.ProgressTable) {
 	document.Find(".my-2").Find("div:first-child").Clone().Children().Remove().End().Each(func(nameId int, name *goquery.Selection) {
-		ptObject.Tables[nameId].Name = replacedString.ReplaceAllString(name.Text(), " ")
+		processedString := replacedString.ReplaceAllString(name.Text(), " ")
+		if strings.HasPrefix(processedString, " ") {
+			ptObject.Tables[nameId].Name = strings.Replace(processedString, " ", "", 1)
+		}
 	})
 }
 
-func getSubjectTableData(document *goquery.Document, ptObject *user.ProgressTable) {
+func retrieveSubjectTablesData(document *goquery.Document, ptObject *user.ProgressTable) {
 	filterTrSelection := func(i int, tr *goquery.Selection) bool {
 		trLen := tr.Find("td").Length()
 		return trLen == 4 || trLen == 2
@@ -266,15 +350,23 @@ func getSubjectTableData(document *goquery.Document, ptObject *user.ProgressTabl
 			strObject := user.SubjectTableRow{}
 			tdSelection := tr.Find("td")
 			tdSelection.Each(func(tdId int, td *goquery.Selection) {
-				tdNew := replacedString.ReplaceAllString(td.Text(), " ")
+				processedString := replacedString.ReplaceAllString(td.Text(), " ")
 				switch tdId {
 				case 0:
-					strObject.Name = tdNew
-				case tdSelection.Length() - 1:
-					if tdNew == " " {
-						strObject.Grades = "отсутствует"
+					if strings.HasPrefix(processedString, " ") {
+						tdNew := strings.Replace(processedString, " ", "", 1)
+						strObject.Name = tdNew
 					} else {
+						strObject.Name = processedString
+					}
+				case tdSelection.Length() - 1:
+					if processedString == " " {
+						strObject.Grades = "отсутствует"
+					} else if strings.HasPrefix(processedString, " ") {
+						tdNew := strings.Replace(processedString, " ", "", 1)
 						strObject.Grades = tdNew
+					} else {
+						strObject.Grades = processedString
 					}
 				}
 			})

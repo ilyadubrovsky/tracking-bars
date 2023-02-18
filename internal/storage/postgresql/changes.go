@@ -1,20 +1,20 @@
 package storage
 
 import (
-	"TrackingBARSv2/internal/entity/change"
-	"TrackingBARSv2/pkg/client/postgresql"
-	"TrackingBARSv2/pkg/logging"
 	"context"
 	"fmt"
 	"github.com/jackc/pgx/v4"
+	"tracking-barsv1.1/internal/entity/change"
+	"tracking-barsv1.1/pkg/client/postgresql"
+	"tracking-barsv1.1/pkg/logging"
 )
 
 type changesStorage struct {
 	client postgresql.Client
-	logger logging.Logger
+	logger *logging.Logger
 }
 
-func NewChangesPostgres(client postgresql.Client, logger logging.Logger) change.Repository {
+func NewChangesPostgres(client postgresql.Client, logger *logging.Logger) change.Repository {
 	return &changesStorage{
 		client: client,
 		logger: logger,
@@ -25,8 +25,8 @@ func (s *changesStorage) Create(ctx context.Context, dto change.CreateChangeDTO)
 	q := `INSERT INTO changes (user_id, subject, control_event, old_grade, new_grade) VALUES ($1, $2, $3, $4, $5)`
 	if _, err := s.client.Exec(ctx, q, dto.UserID, dto.Subject, dto.ControlEvent, dto.OldGrade, dto.NewGrade); err != nil {
 		s.logger.Tracef("SQL: %s", q)
-		s.logger.Debugf("UserID: %d\nSubject: %s\nControl event: %s\n Old grade: %s\n New grade: %s", dto.UserID, dto.Subject, dto.ControlEvent, dto.OldGrade, dto.NewGrade)
-		return fmt.Errorf("failed to Exec due error: %s", err)
+		s.logger.Debugf("UserID: %d\n Subject: %s\n Control event: %s\n Old grade: %s\n New grade: %s", dto.UserID, dto.Subject, dto.ControlEvent, dto.OldGrade, dto.NewGrade)
+		return fmt.Errorf("failed to Exec due error: %v", err)
 	}
 	return nil
 }
@@ -36,7 +36,6 @@ func (s *changesStorage) FindAll(ctx context.Context) ([]change.Change, error) {
 	changesRows, err := s.client.Query(ctx, q)
 	if err != nil {
 		s.logger.Tracef("SQL: %s", q)
-		s.logger.Debugf("Raw Values: %s", changesRows.RawValues())
 		return nil, fmt.Errorf("failed to Query due error: %s", err)
 	}
 
@@ -45,7 +44,6 @@ func (s *changesStorage) FindAll(ctx context.Context) ([]change.Change, error) {
 		var c change.Change
 		if err = changesRows.Scan(&c.ID, &c.UserID, &c.Subject, &c.ControlEvent, &c.OldGrade, &c.NewGrade); err != nil {
 			s.logger.Tracef("SQL: %s", q)
-			s.logger.Debugf("Raw Values: %s", changesRows.RawValues())
 			return nil, fmt.Errorf("failed to Scan when reading Rows due error: %s", err)
 		}
 		cs = append(cs, c)
@@ -53,7 +51,6 @@ func (s *changesStorage) FindAll(ctx context.Context) ([]change.Change, error) {
 
 	if err = changesRows.Err(); err != nil {
 		s.logger.Tracef("SQL: %s", q)
-		s.logger.Debugf("Raw Values: %s", changesRows.RawValues())
 		return nil, fmt.Errorf("failed to handle table rows due error : %s", err)
 	}
 
@@ -91,8 +88,7 @@ func (s *changesStorage) Delete(ctx context.Context, id int) error {
 	q := `DELETE FROM changes WHERE id = $1`
 	_, err := s.client.Exec(ctx, q, id)
 	if err != nil {
-		s.logger.Tracef("SQL: %s", q)
-		s.logger.Debugf("ID: %d", id)
+		s.logger.Tracef("SQL: %s, ID: %d", q, id)
 		return fmt.Errorf("failed to Exec due error: %s", err)
 	}
 	return nil
