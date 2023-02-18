@@ -9,9 +9,10 @@
 + СУБД PostgreSQL для хранения данных (на SQL запросах): [pgx](https://github.com/jackc/pgx);
 + Конфигурация приложения: [cleanenv](https://github.com/ilyakaznacheev/cleanenv) и [godotenv](https://github.com/joho/godotenv);
 + Многоуровневое логирование: [logrus](https://github.com/sirupsen/logrus);
-+ AES/CFB шифрование паролей;
 + Docker и надстройка docker-compose для развёртывания;
-+ Многопоточный парсинг данных пользователей.
++ Многопоточный парсинг данных пользователей;
++ Упрощённая чистая архитектура;
++ AES/CFB шифрование паролей.
 
 #### Структура проекта:
     .
