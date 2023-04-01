@@ -3,7 +3,7 @@ CREATE TABLE "users"
     id              BIGSERIAL NOT NULL PRIMARY KEY,
     username        TEXT      NULL DEFAULT '',
     password        BYTEA     NULL DEFAULT '',
-    progress_table  JSONB          DEFAULT '{}',
+    progress_table  JSONB          DEFAULT '{"tables": null}'::jsonb,
     deleted         BOOL           DEFAULT FALSE
 );
 

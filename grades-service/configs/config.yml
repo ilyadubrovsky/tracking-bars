@@ -1,0 +1,27 @@
+responses:
+  bot_error: "Возникла ошибка на стороне бота. Пожалуйста, попробуйте позже."
+  bars:
+    expired_data: "Авторизационные данные устарели. Для отслеживания изменений оценок выполните авторизацию повторно. Возможно, возникла ошибка на сервере БАРС."
+    not_authorized: "Вы не авторизованы в БАРС. Для авторизации введите: /auth Логин Пароль."
+    unavailable_pt: "Данные о Вашей успеваемости пока недоступны. Скорее всего они появятся позже."
+    default_answer: "Я понимаю только команды из списка: /help."
+
+bars:
+  urls:
+    url: https://bars.mpei.ru/bars_web/
+    registration_url: https://bars.mpei.ru/bars_web/
+    main_page_url: https://bars.mpei.ru/bars_web/?sod=1
+  parser_delay_in_seconds: 60
+  count_of_parsers: 5
+  
+rabbitmq:
+  consumer:
+    grades_requests: "grades_requests"
+    grades_workers: 1
+    prefetch_count: 3
+  producer:
+    telegram_exchange: "telegram_exchange"
+    telegram_messages: "telegram_messages"
+    telegram_messages_key: "telegram_messages_key"
+    grades_responses: "grades_responses"
+    grades_responses_key: "grades_responses_key"

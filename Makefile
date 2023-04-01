@@ -1,5 +1,7 @@
 build:
-	docker-compose build app
+	docker-compose build telegram-service
+	docker-compose build user-service
+	docker-compose build grades-service
 
 run:
 	docker-compose up -d

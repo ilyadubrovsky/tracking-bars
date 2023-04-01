@@ -1,13 +1,37 @@
-version: '3.8'
+version: '3.3'
 
 services:
-  app:
-    build: ./
-    command: ./wait-for-postgres.sh db ./app
+  user-service:
+    build: ./user-service
+    command: ./user-service
     depends_on:
-      - db
+      rabbitmq:
+        condition: service_healthy
+      db:
+        condition: service_healthy
     environment:
       - DB_PASSWORD=12345678
+    image: user-service
+  grades-service:
+    build: ./grades-service
+    command: ./grades-service
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      db:
+        condition: service_healthy
+    environment:
+      - DB_PASSWORD=12345678
+    image: grades-service
+  telegram-service:
+    build: ./telegram-service
+    command: ./telegram-service
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      db:
+        condition: service_healthy
+    image: telegram-service
   db:
     restart: always
     image: postgres:13.3
@@ -20,3 +44,25 @@ services:
       - POSTGRES_DB=trackingbars
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=12345678
+    healthcheck:
+      test: ["CMD", "pg_isready"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+  rabbitmq:
+    hostname: rabbitmq
+    restart: always
+    image: rabbitmq:3.11-management
+    volumes:
+      - ./.rabbitmq:/var/lib/
+    ports:
+      - "15672:15672"
+    environment:
+      - RABBITMQ_DEFAULT_USER=guest
+      - RABBITMQ_DEFAULT_PASS=guest
+      - RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS=-rabbit disk_free_limit 536870912
+    healthcheck:
+      test: [ "CMD", "rabbitmqctl", "status" ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
