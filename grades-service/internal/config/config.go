@@ -8,9 +8,8 @@ import (
 
 type Config struct {
 	Bars struct {
-		URLs                 BarsURLs `yaml:"urls" env-required:"true"`
-		ParserDelayInSeconds int      `yaml:"parser_delay_in_seconds" env-required:"true"`
-		CountOfParsers       int      `yaml:"count_of_parsers" env-required:"true"`
+		ParserDelayInSeconds int `yaml:"parser_delay_in_seconds" env-required:"true"`
+		CountOfParsers       int `yaml:"count_of_parsers" env-required:"true"`
 	} `yaml:"bars" env-required:"true"`
 	Responses Responses `yaml:"responses" env-required:"true"`
 	RabbitMQ  RabbitMQ  `yaml:"rabbitmq" env-required:"true"`
@@ -41,12 +40,6 @@ type RabbitMQ struct {
 		GradesResponses     string `yaml:"grades_responses" env-required:"true"`
 		GradesResponsesKey  string `yaml:"grades_responses_key" env-required:"true"`
 	} `yaml:"producer" env-required:"true"`
-}
-
-type BarsURLs struct {
-	URL             string `yaml:"url" env-required:"true"`
-	RegistrationURL string `yaml:"registration_url" env-required:"true"`
-	MainPageURL     string `yaml:"main_page_url" env-required:"true"`
 }
 
 var (

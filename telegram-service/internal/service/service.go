@@ -47,24 +47,26 @@ func (s *Service) EditMessageWithOpts(id int64, messageid int, msg string, opts 
 	return s.middlewareError(id, err)
 }
 
-// MiddlewareError id - target user of this action
-func (s *Service) middlewareError(id int64, err error) error {
+// middlewareError targetID - target user of this action
+func (s *Service) middlewareError(targetID int64, err error) error {
 	if err == nil {
 		return nil
 	}
 
-	s.logger.Errorf("failed to execute bot instructions to user %d: %v", id, err)
+	s.logger.Errorf("failed to execute bot instructions to user %d: %v", targetID, err)
 
 	if errors.As(err, &tele.ErrBlockedByUser) || errors.As(err, &tele.ErrUserIsDeactivated) ||
 		errors.As(err, &tele.ErrNotStartedByUser) {
 		request := model.DeleteUserRequest{
-			UserID: id,
+			UserID: targetID,
 		}
+
 		requestBytes, err2 := json.Marshal(request)
 		if err2 != nil {
 			s.logger.Errorf("failed to json marshal a delete user request due to error: %v", err2)
 			return err
 		}
+
 		if err2 = s.producer.Publish(s.cfg.RabbitMQ.Producer.UserExchange,
 			s.cfg.RabbitMQ.Producer.DeleteUserRequestsKey, defaultRequestExpiration, requestBytes); err2 != nil {
 			s.logger.Errorf("failed to publish a logout user request due to error: %v", err2)

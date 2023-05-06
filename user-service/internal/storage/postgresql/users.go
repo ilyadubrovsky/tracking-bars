@@ -4,26 +4,30 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/jackc/pgconn"
 	"github.com/jackc/pgx/v4"
+	"time"
 	"user-service/internal/entity/user"
-	"user-service/pkg/client/postgresql"
 	"user-service/pkg/logging"
 )
 
-/*
-Create - Create with FULL USER
-AuthorizationCheck - Get with ID, Deleted
- - GetAll with ID, Username, Password, ProgressTable
-AuthorizationUser - Update username, password, deleted
-LogoutUser - Update Password, ProgressTable, Deleted (w/o username) when logout
-*/
+const (
+	users = "users"
+)
+
+type Client interface {
+	Exec(ctx context.Context, sql string, arguments ...interface{}) (pgconn.CommandTag, error)
+	Query(ctx context.Context, sql string, args ...interface{}) (pgx.Rows, error)
+	QueryRow(ctx context.Context, sql string, args ...interface{}) pgx.Row
+	Begin(ctx context.Context) (pgx.Tx, error)
+}
 
 type usersPostgres struct {
-	client postgresql.Client
+	client Client
 	logger *logging.Logger
 }
 
-func NewUsersPostgres(client postgresql.Client, logger *logging.Logger) user.Repository {
+func NewUsersPostgres(client Client, logger *logging.Logger) *usersPostgres {
 	return &usersPostgres{
 		client: client,
 		logger: logger,
@@ -31,10 +35,11 @@ func NewUsersPostgres(client postgresql.Client, logger *logging.Logger) user.Rep
 }
 
 func (s *usersPostgres) Create(ctx context.Context, u user.User) error {
-	q := `INSERT INTO users (id, username, password, progress_table) VALUES ($1, $2, $3, $4)`
+	q := fmt.Sprintf("INSERT INTO %s (id, username, password, progress_table, created_at, updated_at)"+
+		"VALUES ($1, $2, $3, $4, $5, $6)", users)
 	s.logger.Tracef("SQL: %s", q)
 
-	_, err := s.client.Exec(ctx, q, u.ID, u.Username, u.Password, u.ProgressTable)
+	_, err := s.client.Exec(ctx, q, u.ID, u.Username, u.Password, u.ProgressTable, time.Now(), time.Now())
 	if err != nil {
 		s.logger.Debugf("UserID: %d\n, Username:%s\n, Password:%s\n, Progress Table:%s\n", u.ID, u.Username, u.Password, u.ProgressTable)
 		return err
@@ -43,8 +48,9 @@ func (s *usersPostgres) Create(ctx context.Context, u user.User) error {
 	return nil
 }
 
-func (s *usersPostgres) GetAllUsersID(ctx context.Context, aq ...string) ([]user.User, error) {
-	q := `SELECT id, username, password, progress_table, deleted FROM users `
+func (s *usersPostgres) GetAllUsers(ctx context.Context, aq ...string) ([]user.User, error) {
+	q := fmt.Sprintf("SELECT id, username, password, progress_table, deleted FROM %s ", users)
+
 	if len(aq) == 1 {
 		q += aq[0]
 	} else if len(aq) > 1 {
@@ -77,7 +83,7 @@ func (s *usersPostgres) GetAllUsersID(ctx context.Context, aq ...string) ([]user
 }
 
 func (s *usersPostgres) AuthorizationCheck(ctx context.Context, id int64) (*bool, error) {
-	q := `SELECT id, username, password, progress_table, deleted FROM users WHERE id = $1`
+	q := fmt.Sprintf("SELECT id, username, password, progress_table, deleted FROM %s WHERE id = $1", users)
 	s.logger.Tracef("SQL: %s", q)
 
 	var usr user.User
@@ -95,10 +101,10 @@ func (s *usersPostgres) AuthorizationCheck(ctx context.Context, id int64) (*bool
 }
 
 func (s *usersPostgres) Reauthorization(ctx context.Context, id int64, username string, password []byte, deleted bool) error {
-	q := `UPDATE users SET username = $2, password = $3, deleted = $4 WHERE id = $1`
+	q := fmt.Sprintf("UPDATE %s SET username = $2, password = $3, deleted = $4, updated_at = $5 WHERE id = $1", users)
 	s.logger.Tracef("SQL: %s", q)
 
-	_, err := s.client.Exec(ctx, q, id, username, password, deleted)
+	_, err := s.client.Exec(ctx, q, id, username, password, deleted, time.Now())
 	if err != nil {
 		s.logger.Debugf("UserID: %d\n, Username:%s\n, Password: %v\n, Deleted: %v\n", id, username, password, deleted)
 		return err
@@ -108,10 +114,11 @@ func (s *usersPostgres) Reauthorization(ctx context.Context, id int64, username 
 }
 
 func (s *usersPostgres) LogoutUser(ctx context.Context, id int64) error {
-	q := `UPDATE users SET password = DEFAULT, progress_table = DEFAULT, deleted = true WHERE id = $1`
+	q := fmt.Sprintf("UPDATE %s SET password = DEFAULT, progress_table = DEFAULT, deleted = true, "+
+		"updated_at = $2 WHERE id = $1", users)
 	s.logger.Tracef("SQL: %s", q)
 
-	_, err := s.client.Exec(ctx, q, id)
+	_, err := s.client.Exec(ctx, q, id, time.Now())
 	if err != nil {
 		s.logger.Debugf("UserID: %d\n", id)
 		return err
@@ -121,7 +128,7 @@ func (s *usersPostgres) LogoutUser(ctx context.Context, id int64) error {
 }
 
 func (s *usersPostgres) Delete(ctx context.Context, id int64) error {
-	q := `DELETE from users WHERE id = $1`
+	q := fmt.Sprintf("DELETE from %s WHERE id = $1", users)
 	s.logger.Tracef("SQL: %s", q)
 
 	_, err := s.client.Exec(ctx, q, id)

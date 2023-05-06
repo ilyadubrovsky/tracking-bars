@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"github.com/streadway/amqp"
 	"grades-service/internal/config"
-	"grades-service/internal/entity/change"
-	"grades-service/internal/entity/user"
 	"grades-service/internal/events"
 	"grades-service/internal/events/grades"
 	"grades-service/internal/service"
@@ -25,8 +23,6 @@ type Service interface {
 
 type App struct {
 	service        Service
-	usersStorage   user.Repository
-	changesStorage change.Repository
 	producer       mq.Producer
 	gradesStrategy events.ProcessStrategy
 	cfg            *config.Config
@@ -49,9 +45,9 @@ func NewApp(cfg *config.Config) (*App, error) {
 	}
 
 	a.logger.Info("users storage initializing")
-	a.usersStorage = storage.NewUsersPostgres(postgresqlClient, a.logger)
+	usersStorage := storage.NewUsersPostgres(postgresqlClient, a.logger)
 	a.logger.Info("changes storage initializing")
-	a.changesStorage = storage.NewChangesPostgres(postgresqlClient, a.logger)
+	changesStorage := storage.NewChangesPostgres(postgresqlClient, a.logger)
 
 	RabbitURL := fmt.Sprintf("amqp://%s:%s@%s:%s/",
 		os.Getenv("RABBIT_USERNAME"), os.Getenv("RABBIT_PASSWORD"),
@@ -61,6 +57,7 @@ func NewApp(cfg *config.Config) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
+	a.producer = producer
 
 	a.logger.Info("producer: 'telegram' exchange initializing")
 	if err = producer.DeclareExchange(a.cfg.RabbitMQ.Producer.TelegramExchange, amqp.ExchangeDirect,
@@ -68,23 +65,14 @@ func NewApp(cfg *config.Config) (*App, error) {
 		a.logger.Fatalf("failed to declare an exchange due to error: %v", err)
 	}
 
-	a.logger.Info("producer: 'grades responses' queue initializing and binding")
-	if err = producer.DeclareAndBindQueue(a.cfg.RabbitMQ.Producer.TelegramExchange,
-		a.cfg.RabbitMQ.Producer.GradesResponses, a.cfg.RabbitMQ.Producer.GradesResponsesKey); err != nil {
-		a.logger.Fatalf("failed to declare and bind a queue and bind due to error: %v", err)
-	}
+	a.declareAndBindQueue(a.cfg.RabbitMQ.Producer.TelegramExchange,
+		a.cfg.RabbitMQ.Producer.GradesResponses, a.cfg.RabbitMQ.Producer.GradesResponsesKey)
 
-	a.logger.Info("producer: 'telegram messages' queue initializing and binding")
-	if err = producer.DeclareAndBindQueue(a.cfg.RabbitMQ.Producer.TelegramExchange,
-		a.cfg.RabbitMQ.Producer.TelegramMessages, a.cfg.RabbitMQ.Producer.TelegramMessagesKey); err != nil {
-		a.logger.Fatalf("failed to declare and bind a queue and bind due to error: %v", err)
-	}
-
-	a.producer = producer
+	a.declareAndBindQueue(a.cfg.RabbitMQ.Producer.TelegramExchange,
+		a.cfg.RabbitMQ.Producer.TelegramMessages, a.cfg.RabbitMQ.Producer.TelegramMessagesKey)
 
 	a.logger.Info("service initializing")
-	gradesService := service.NewService(cfg, a.usersStorage, a.changesStorage, a.logger, a.producer)
-
+	gradesService := service.NewService(cfg, usersStorage, changesStorage, a.logger, a.producer)
 	a.service = gradesService
 
 	a.logger.Info("grades process strategy initializing")
@@ -92,6 +80,13 @@ func NewApp(cfg *config.Config) (*App, error) {
 		a.cfg.Responses.Bars.NotAuthorized, a.cfg.Responses.BotError)
 
 	return &a, nil
+}
+
+func (a *App) declareAndBindQueue(exchange, queue, key string) {
+	a.logger.Infof("producer: '%s' queue initializing and binding", queue)
+	if err := a.producer.DeclareAndBindQueue(exchange, queue, key); err != nil {
+		a.logger.Fatalf("failed to declare and bind a queue and bind due to error: %v", err)
+	}
 }
 
 func (a *App) startConsume() {
@@ -133,6 +128,7 @@ func (a *App) initializeConsume(consumer mq.Consumer, queue, exchange, key strin
 	return nil
 }
 
+// Run TODO replace synchronization with wait group (and in other services)
 func (a *App) Run() {
 	a.logger.Info("app launching")
 

@@ -4,11 +4,17 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/ilyadubrovsky/bars"
 	"grades-service/internal/events/model"
 )
 
+type Service interface {
+	GetProgressTableFromDB(ctx context.Context, id int64) (*bars.ProgressTable, error)
+	GetProgressTableByRequest(ctx context.Context, id int64) (*bars.ProgressTable, error)
+}
+
 type ProcessStrategy struct {
-	service       model.Service
+	service       Service
 	unavailablePT string
 	notAuthorized string
 	botError      string
@@ -36,7 +42,7 @@ func (s *ProcessStrategy) Process(body []byte) (*model.GetGradesResponse, error)
 	if progressTable == nil {
 		response.ResponseMessage = s.notAuthorized
 	} else if len(progressTable.Tables) == 0 {
-		pt, err := s.service.UpdateAndGetProgressTable(context.Background(), request.RequestID)
+		pt, err := s.service.GetProgressTableByRequest(context.Background(), request.RequestID)
 		if err != nil {
 			response.ResponseMessage = s.unavailablePT
 			return response, fmt.Errorf("service: %v", err)
@@ -50,7 +56,7 @@ func (s *ProcessStrategy) Process(body []byte) (*model.GetGradesResponse, error)
 	return response, nil
 }
 
-func NewProcessStrategy(service model.Service, unavailablePT, notAuthorized, botError string) *ProcessStrategy {
+func NewProcessStrategy(service Service, unavailablePT, notAuthorized, botError string) *ProcessStrategy {
 	return &ProcessStrategy{service: service, unavailablePT: unavailablePT,
 		notAuthorized: notAuthorized, botError: botError}
 }

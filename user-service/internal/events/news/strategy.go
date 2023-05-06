@@ -8,8 +8,12 @@ import (
 	"user-service/internal/events/model"
 )
 
+type usersGetter interface {
+	GetUsersByOpts(ctx context.Context, opts ...string) ([]user.User, error)
+}
+
 type ProcessStrategy struct {
-	service  model.Service
+	service  usersGetter
 	botError string
 }
 
@@ -27,11 +31,11 @@ func (s *ProcessStrategy) Process(body []byte) ([]model.SendMessageRequest, erro
 
 	switch request.Type {
 	case "all":
-		usrs, err = s.service.GetUsersIDByOpts(context.Background())
+		usrs, err = s.service.GetUsersByOpts(context.Background())
 	case "auth":
-		usrs, err = s.service.GetUsersIDByOpts(context.Background(), "WHERE deleted = false;")
+		usrs, err = s.service.GetUsersByOpts(context.Background(), "WHERE deleted = false;")
 	default:
-		usrs, err = s.service.GetUsersIDByOpts(context.Background())
+		usrs, err = s.service.GetUsersByOpts(context.Background())
 	}
 	if err != nil {
 		return nil, fmt.Errorf("service: %v", err)
@@ -49,6 +53,6 @@ func (s *ProcessStrategy) Process(body []byte) ([]model.SendMessageRequest, erro
 	return responses, nil
 }
 
-func NewProcessStrategy(service model.Service, botError string) *ProcessStrategy {
+func NewProcessStrategy(service usersGetter, botError string) *ProcessStrategy {
 	return &ProcessStrategy{service: service, botError: botError}
 }

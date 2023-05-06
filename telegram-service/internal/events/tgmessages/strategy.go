@@ -3,11 +3,14 @@ package tgmessages
 import (
 	"encoding/json"
 	"fmt"
-	"telegram-service/internal/events/model"
 )
 
+type messageSender interface {
+	SendMessageWithOpts(id int64, msg string, opts ...interface{}) error
+}
+
 type ProcessStrategy struct {
-	service model.Service
+	service messageSender
 }
 
 func (s *ProcessStrategy) Process(body []byte) error {
@@ -20,6 +23,6 @@ func (s *ProcessStrategy) Process(body []byte) error {
 	return s.service.SendMessageWithOpts(request.RequestID, request.Message, request.ParseMode)
 }
 
-func NewProcessStrategy(service model.Service) *ProcessStrategy {
+func NewProcessStrategy(service messageSender) *ProcessStrategy {
 	return &ProcessStrategy{service: service}
 }

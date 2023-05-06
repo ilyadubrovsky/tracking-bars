@@ -1,9 +1,3 @@
-bars:
-  urls:
-    url: https://bars.mpei.ru/bars_web/
-    registration_url: https://bars.mpei.ru/bars_web/
-    main_page_url: https://bars.mpei.ru/bars_web/?sod=1
-
 responses:
   bot_error: "Возникла ошибка на стороне бота. Пожалуйста, попробуйте позже."
   bars:

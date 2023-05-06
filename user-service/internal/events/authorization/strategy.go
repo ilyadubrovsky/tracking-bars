@@ -11,8 +11,12 @@ import (
 	"user-service/internal/service"
 )
 
+type userAuthorizationer interface {
+	Authorization(ctx context.Context, dto user.CreateUserDTO) (bool, error)
+}
+
 type ProcessStrategy struct {
-	service model.Service
+	service userAuthorizationer
 	cfg     *config.Config
 }
 
@@ -47,6 +51,6 @@ func (s *ProcessStrategy) Process(body []byte) ([]model.SendMessageRequest, erro
 
 }
 
-func NewProcessStrategy(service model.Service, cfg *config.Config) *ProcessStrategy {
+func NewProcessStrategy(service userAuthorizationer, cfg *config.Config) *ProcessStrategy {
 	return &ProcessStrategy{service: service, cfg: cfg}
 }

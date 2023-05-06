@@ -10,8 +10,12 @@ import (
 	"user-service/internal/service"
 )
 
+type userLogouter interface {
+	Logout(ctx context.Context, id int64) error
+}
+
 type ProcessStrategy struct {
-	service model.Service
+	service userLogouter
 	cfg     *config.Config
 }
 
@@ -38,6 +42,6 @@ func (s *ProcessStrategy) Process(body []byte) ([]model.SendMessageRequest, erro
 	return []model.SendMessageRequest{response}, nil
 }
 
-func NewProcessStrategy(service model.Service, cfg *config.Config) *ProcessStrategy {
+func NewProcessStrategy(service userLogouter, cfg *config.Config) *ProcessStrategy {
 	return &ProcessStrategy{service: service, cfg: cfg}
 }

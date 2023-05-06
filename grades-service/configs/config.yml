@@ -7,11 +7,7 @@ responses:
     default_answer: "Я понимаю только команды из списка: /help."
 
 bars:
-  urls:
-    url: https://bars.mpei.ru/bars_web/
-    registration_url: https://bars.mpei.ru/bars_web/
-    main_page_url: https://bars.mpei.ru/bars_web/?sod=1
-  parser_delay_in_seconds: 60
+  parser_delay_in_seconds: 15
   count_of_parsers: 5
   
 rabbitmq:

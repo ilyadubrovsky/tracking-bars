@@ -14,6 +14,7 @@ require (
 	github.com/BurntSushi/toml v1.1.0 // indirect
 	github.com/PuerkitoBio/goquery v1.8.1 // indirect
 	github.com/andybalholm/cascadia v1.3.1 // indirect
+	github.com/ilyadubrovsky/bars v0.0.0-20230503204412-1e4e4b2b579a // indirect
 	github.com/jackc/chunkreader/v2 v2.0.1 // indirect
 	github.com/jackc/pgio v1.0.0 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect

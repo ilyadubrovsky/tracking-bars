@@ -19,12 +19,6 @@ func (a *App) handleCallback(c tele.Context) error {
 		return a.service.EditMessageWithOpts(c.Sender().ID, c.Message().ID, a.cfg.Responses.BotError)
 	}
 
-	if callbackData[2:] == "show" {
-		return c.Respond(&tele.CallbackResponse{
-			Text: "Эта функция совсем скоро появится!",
-		})
-	}
-
 	request := model.GetGradesRequest{
 		RequestID:    c.Sender().ID,
 		IsCallback:   true,
@@ -32,8 +26,7 @@ func (a *App) handleCallback(c tele.Context) error {
 		MessageID:    c.Message().ID,
 	}
 
-	if err := a.marshalAndPublish(request, a.cfg.RabbitMQ.Producer.GradesExchange,
-		a.cfg.RabbitMQ.Producer.GradesRequestsKey, defaultRequestExpiration); err != nil {
+	if err := a.marshalAndPublish(request, a.cfg.RabbitMQ.Producer.GradesExchange, a.cfg.RabbitMQ.Producer.GradesRequestsKey); err != nil {
 		a.logger.Errorf("failed to handle a callback due to error: %v", err)
 		return a.service.EditMessageWithOpts(c.Sender().ID, c.Message().ID, a.cfg.Responses.BotError)
 	}
@@ -80,8 +73,7 @@ func (a *App) handleAuthCommand(c tele.Context) error {
 		Password:  password,
 	}
 
-	if err := a.marshalAndPublish(request, a.cfg.RabbitMQ.Producer.UserExchange,
-		a.cfg.RabbitMQ.Producer.AuthRequestsKey, defaultRequestExpiration); err != nil {
+	if err := a.marshalAndPublish(request, a.cfg.RabbitMQ.Producer.UserExchange, a.cfg.RabbitMQ.Producer.AuthRequestsKey); err != nil {
 		a.logger.Errorf("failed to handle auth command due to error: %v", err)
 		a.logger.Debugf("Request: RequestID: %d, UserID: %d, Username: %s", request.RequestID, request.UserID, request.Username)
 		return a.service.SendMessageWithOpts(c.Sender().ID, a.cfg.Responses.BotError)
@@ -96,8 +88,7 @@ func (a *App) handleLogoutCommand(c tele.Context) error {
 		UserID:    c.Sender().ID,
 	}
 
-	if err := a.marshalAndPublish(request, a.cfg.RabbitMQ.Producer.UserExchange,
-		a.cfg.RabbitMQ.Producer.LogoutRequestsKey, defaultRequestExpiration); err != nil {
+	if err := a.marshalAndPublish(request, a.cfg.RabbitMQ.Producer.UserExchange, a.cfg.RabbitMQ.Producer.LogoutRequestsKey); err != nil {
 		a.logger.Errorf("failed to handle logout command due to error: %v", err)
 		a.logger.Debugf("Request: RequestID: %d, UserID: %d", request.RequestID, request.UserID)
 		return a.service.SendMessageWithOpts(c.Sender().ID, a.cfg.Responses.BotError)
@@ -112,8 +103,7 @@ func (a *App) handlePtCommand(c tele.Context) error {
 		IsCallback: false,
 	}
 
-	if err := a.marshalAndPublish(request, a.cfg.RabbitMQ.Producer.GradesExchange,
-		a.cfg.RabbitMQ.Producer.GradesRequestsKey, defaultRequestExpiration); err != nil {
+	if err := a.marshalAndPublish(request, a.cfg.RabbitMQ.Producer.GradesExchange, a.cfg.RabbitMQ.Producer.GradesRequestsKey); err != nil {
 		a.logger.Errorf("failed to handle pt command due to error: %v", err)
 		a.logger.Debugf("Request: RequestID: %d, IsCallback: %v, CallbackData :%s, MessageID: %d",
 			request.RequestID, request.IsCallback, request.CallbackData, request.MessageID)
@@ -171,8 +161,7 @@ func (a *App) handleSendnewsAllCommand(c tele.Context) error {
 		ParseMode: tele.ModeMarkdown,
 	}
 
-	if err := a.marshalAndPublish(request, a.cfg.RabbitMQ.Producer.UserExchange,
-		a.cfg.RabbitMQ.Producer.NewsRequestsKey, defaultRequestExpiration); err != nil {
+	if err := a.marshalAndPublish(request, a.cfg.RabbitMQ.Producer.UserExchange, a.cfg.RabbitMQ.Producer.NewsRequestsKey); err != nil {
 		a.logger.Errorf("failed to handle sendnews command due to error: %v", err)
 		a.logger.Debugf("Request: RequestID: %d, Type: %s, Message: %s ParseMode: %s",
 			request.RequestID, request.Type, request.Message, request.ParseMode)
@@ -192,8 +181,7 @@ func (a *App) handleSendNewsAuthCommand(c tele.Context) error {
 		ParseMode: tele.ModeMarkdown,
 	}
 
-	if err := a.marshalAndPublish(request, a.cfg.RabbitMQ.Producer.UserExchange,
-		a.cfg.RabbitMQ.Producer.NewsRequestsKey, defaultRequestExpiration); err != nil {
+	if err := a.marshalAndPublish(request, a.cfg.RabbitMQ.Producer.UserExchange, a.cfg.RabbitMQ.Producer.NewsRequestsKey); err != nil {
 		a.logger.Errorf("failed to handle sendnewsauth command due to error: %v", err)
 		a.logger.Debugf("Request: RequestID: %d, Type: %s, Message: %s ParseMode: %s",
 			request.RequestID, request.Type, request.Message, request.ParseMode)
@@ -219,8 +207,7 @@ func (a *App) handleLogoutUserCommand(c tele.Context) error {
 		UserID:    int64(userID),
 	}
 
-	if err = a.marshalAndPublish(request, a.cfg.RabbitMQ.Producer.UserExchange,
-		a.cfg.RabbitMQ.Producer.LogoutRequestsKey, defaultRequestExpiration); err != nil {
+	if err = a.marshalAndPublish(request, a.cfg.RabbitMQ.Producer.UserExchange, a.cfg.RabbitMQ.Producer.LogoutRequestsKey); err != nil {
 		a.logger.Errorf("failed to handle logoutuser command due to error: %v", err)
 		a.logger.Debugf("Request: RequestID: %d, UserID: %d", request.RequestID, request.UserID)
 		return a.service.SendMessageWithOpts(c.Sender().ID, a.cfg.Responses.BotError)
@@ -246,8 +233,7 @@ func (a *App) handleDeleteUserCommand(c tele.Context) error {
 		SendResponse: true,
 	}
 
-	if err = a.marshalAndPublish(request, a.cfg.RabbitMQ.Producer.UserExchange,
-		a.cfg.RabbitMQ.Producer.DeleteUserRequestsKey, defaultRequestExpiration); err != nil {
+	if err = a.marshalAndPublish(request, a.cfg.RabbitMQ.Producer.UserExchange, a.cfg.RabbitMQ.Producer.DeleteUserRequestsKey); err != nil {
 		a.logger.Errorf("failed to handle deleteuser command due to error: %v", err)
 		a.logger.Debugf("Request: RequestID: %d, UserID: %d, SendResponse: %v", request.RequestID, request.UserID, request.SendResponse)
 		return a.service.SendMessageWithOpts(c.Sender().ID, a.cfg.Responses.BotError)
@@ -278,15 +264,13 @@ func (a *App) handleAuthUserCommand(c tele.Context) error {
 		Password:  msg[3],
 	}
 
-	if err = a.marshalAndPublish(request, a.cfg.RabbitMQ.Producer.UserExchange,
-		a.cfg.RabbitMQ.Producer.AuthRequestsKey, defaultRequestExpiration); err != nil {
+	if err = a.marshalAndPublish(request, a.cfg.RabbitMQ.Producer.UserExchange, a.cfg.RabbitMQ.Producer.AuthRequestsKey); err != nil {
 		a.logger.Errorf("failed to handle deleteuser command due to error: %v", err)
 		a.logger.Debugf("Request: RequestID: %d, UserID: %d, Username: %s", request.RequestID, request.UserID, request.Username)
 		return a.service.SendMessageWithOpts(c.Sender().ID, a.cfg.Responses.BotError)
 	}
 
 	return a.service.SendMessageWithOpts(c.Sender().ID, fmt.Sprintf("Запрос на авторизацию пользователя %d принят и ответ будет отправлен в ближайшее время.", request.UserID))
-
 }
 
 func (a *App) handleSendmsgCommand(c tele.Context) error {
@@ -310,13 +294,13 @@ func (a *App) handleSendmsgCommand(c tele.Context) error {
 		fmt.Sprintf("Пользователю %d успешно отправлено сообщение:\n%s", userID, text), tele.ModeMarkdown)
 }
 
-func (a *App) marshalAndPublish(request interface{}, exchange, key, expiration string) error {
+func (a *App) marshalAndPublish(request interface{}, exchange, key string) error {
 	requestBytes, err := json.Marshal(request)
 	if err != nil {
 		return fmt.Errorf("json marshal: %v", err)
 	}
 
-	if err = a.producer.Publish(exchange, key, expiration, requestBytes); err != nil {
+	if err = a.producer.Publish(exchange, key, defaultRequestExpiration, requestBytes); err != nil {
 		return fmt.Errorf("producer publish: %v", err)
 	}
 

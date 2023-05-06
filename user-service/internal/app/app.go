@@ -21,9 +21,15 @@ import (
 	"user-service/pkg/logging"
 )
 
+type Service interface {
+	Authorization(ctx context.Context, dto user.CreateUserDTO) (bool, error)
+	Logout(ctx context.Context, id int64) error
+	GetUsersByOpts(ctx context.Context, opts ...string) ([]user.User, error)
+	DeleteUser(ctx context.Context, id int64) error
+}
+
 type App struct {
 	service            Service
-	usersStorage       user.Repository
 	cfg                *config.Config
 	logger             *logging.Logger
 	producer           mq.Producer
@@ -31,13 +37,6 @@ type App struct {
 	logoutStrategy     events.ProcessStrategy
 	newsStrategy       events.ProcessStrategy
 	deleteUserStrategy events.ProcessStrategy
-}
-
-type Service interface {
-	Authorization(ctx context.Context, dto user.CreateUserDTO) (bool, error)
-	Logout(ctx context.Context, id int64) error
-	GetUsersIDByOpts(ctx context.Context, opts ...string) ([]user.User, error)
-	DeleteUser(ctx context.Context, id int64) error
 }
 
 func NewApp(cfg *config.Config) (*App, error) {
@@ -57,16 +56,14 @@ func NewApp(cfg *config.Config) (*App, error) {
 	}
 
 	a.logger.Info("users storage initializing")
-	a.usersStorage = storage.NewUsersPostgres(postgresqlClient, a.logger)
+	usersStorage := storage.NewUsersPostgres(postgresqlClient, a.logger)
 
 	a.logger.Info("service initializing")
-	a.service = service.NewService(cfg, a.usersStorage, a.logger)
+	a.service = service.NewService(usersStorage, a.logger)
 
-	// TODO responses instead config
 	a.logger.Info("auth process strategy initializing")
 	a.authStrategy = authorization.NewProcessStrategy(a.service, a.cfg)
 
-	// TODO responses instead config
 	a.logger.Info("logout process strategy initializing")
 	a.logoutStrategy = logout.NewProcessStrategy(a.service, a.cfg)
 
@@ -86,13 +83,13 @@ func NewApp(cfg *config.Config) (*App, error) {
 		a.logger.Fatalf("failed to create a new producer due to error: %v", err)
 	}
 
-	a.logger.Info("producer: 'telegram' exchange initializing")
+	a.logger.Infof("producer: '%s' exchange initializing", a.cfg.RabbitMQ.Producer.TelegramExchange)
 	if err = producer.DeclareExchange(a.cfg.RabbitMQ.Producer.TelegramExchange, amqp.ExchangeDirect,
 		true, false, false); err != nil {
 		a.logger.Fatalf("failed to declare an exchange due to error: %v", err)
 	}
 
-	a.logger.Info("producer: 'telegram messages' queue initializing and binding")
+	a.logger.Infof("producer: '%s' queue initializing and binding", a.cfg.RabbitMQ.Producer.TelegramMessages)
 	if err = producer.DeclareAndBindQueue(a.cfg.RabbitMQ.Producer.TelegramExchange,
 		a.cfg.RabbitMQ.Producer.TelegramMessages, a.cfg.RabbitMQ.Producer.TelegramMessagesKey); err != nil {
 		a.logger.Fatalf("failed to declare and bind a queue due to error: %v", err)

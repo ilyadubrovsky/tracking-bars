@@ -3,16 +3,20 @@ package grades
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/ilyadubrovsky/bars"
 	tele "gopkg.in/telebot.v3"
 	"regexp"
 	"strconv"
 	"strings"
-	"telegram-service/internal/entity/user"
-	"telegram-service/internal/events/model"
 )
 
+type messageProvider interface {
+	EditMessageWithOpts(id int64, messageid int, msg string, opts ...interface{}) error
+	SendMessageWithOpts(id int64, msg string, opts ...interface{}) error
+}
+
 type ProcessStrategy struct {
-	service       model.Service
+	service       messageProvider
 	botError      string
 	unavailablePT string
 }
@@ -32,13 +36,13 @@ func (s *ProcessStrategy) Process(body []byte) error {
 	}
 
 	if !response.IsCallback {
-		return s.service.SendMessageWithOpts(response.RequestID, extractTablesData(response.ProgressTable.Tables),
+		return s.service.SendMessageWithOpts(response.RequestID, extractSubjectsNames(response.ProgressTable.Tables),
 			tele.ModeMarkdown, makePtInlineMarkup(&response.ProgressTable))
 	}
 
 	if response.CallbackData == "back" {
 		progressTableInlineMarkup := makePtInlineMarkup(&response.ProgressTable)
-		msg := extractTablesData(response.ProgressTable.Tables)
+		msg := extractSubjectsNames(response.ProgressTable.Tables)
 		return s.service.EditMessageWithOpts(response.RequestID, response.MessageID, msg, tele.ModeMarkdown, progressTableInlineMarkup)
 	} else if strings.HasPrefix(response.CallbackData, "show") {
 		n, err := strconv.Atoi(response.CallbackData[4:])
@@ -50,10 +54,10 @@ func (s *ProcessStrategy) Process(body []byte) error {
 			return s.service.EditMessageWithOpts(response.RequestID, response.MessageID, s.unavailablePT)
 		}
 
-		ptBackInlineMarkup := makePtBackInlineMarkupWithHide(n)
+		ptBackInlineMarkup := makePtBackInlineMarkup(n, "hide")
 
 		return s.service.EditMessageWithOpts(response.RequestID, response.MessageID,
-			response.ProgressTable.Tables[n-1].String(), tele.ModeMarkdown, ptBackInlineMarkup)
+			stToTelegramMessage(&response.ProgressTable.Tables[n-1]), tele.ModeMarkdown, ptBackInlineMarkup)
 	} else if regexp.MustCompile(`^[0-9]+$`).MatchString(response.CallbackData) {
 		n, err := strconv.Atoi(response.CallbackData)
 		if err != nil {
@@ -64,19 +68,31 @@ func (s *ProcessStrategy) Process(body []byte) error {
 			return s.service.EditMessageWithOpts(response.RequestID, response.MessageID, s.unavailablePT)
 		}
 
-		ptBackInlineMarkup := makePtBackInlineMarkupWithShow(n)
+		ptBackInlineMarkup := makePtBackInlineMarkup(n, "show")
 
 		return s.service.EditMessageWithOpts(response.RequestID, response.MessageID,
-			hideStNames(&response.ProgressTable.Tables[n-1]).String(), tele.ModeMarkdown, ptBackInlineMarkup)
+			stToTelegramMessage(hideControlEventsNames(&response.ProgressTable.Tables[n-1])), tele.ModeMarkdown, ptBackInlineMarkup)
 	} else {
 		return s.service.EditMessageWithOpts(response.RequestID, response.MessageID, s.botError)
 	}
 }
 
-func makePtInlineMarkup(ptObject *user.ProgressTable) *tele.ReplyMarkup {
+func stToTelegramMessage(st *bars.SubjectTable) string {
+	var b strings.Builder
+
+	fmt.Fprintf(&b, fmt.Sprintf("*Название дисциплины:*\n%s\n\n", st.Name))
+
+	for _, c := range st.ControlEvents {
+		fmt.Fprintf(&b, fmt.Sprintf("%s\n*Оценка:* %s\n\n", c.Name, c.Grades))
+	}
+
+	return b.String()
+}
+
+func makePtInlineMarkup(pt *bars.ProgressTable) *tele.ReplyMarkup {
 
 	numberOfRows, numberOfButtonsInLastRow, numberOfButtonsInRow := 0, 0, 5
-	if numberOfSubjects := len(ptObject.Tables); numberOfSubjects >= numberOfButtonsInRow {
+	if numberOfSubjects := len(pt.Tables); numberOfSubjects >= numberOfButtonsInRow {
 		if remainder := numberOfSubjects % numberOfButtonsInRow; remainder == 0 {
 			numberOfRows = numberOfSubjects / numberOfButtonsInRow
 			numberOfButtonsInLastRow = numberOfButtonsInRow
@@ -117,64 +133,58 @@ func makePtInlineMarkup(ptObject *user.ProgressTable) *tele.ReplyMarkup {
 	}
 }
 
-// TODO optimize code
-
-func makePtBackInlineMarkupWithHide(numberSubject int) *tele.ReplyMarkup {
-	hideButton := tele.InlineButton{
-		Unique: fmt.Sprintf("pt%d", numberSubject),
-		Text:   "Скрыть названия КМов",
-	}
-
+// makePtBackInlineMarkup showOrHide must be "show" or "hide", its type of button in PtInlineMarkup
+func makePtBackInlineMarkup(numberSubject int, showOrHide string) *tele.ReplyMarkup {
 	backButton := tele.InlineButton{
 		Unique: "ptback",
 		Text:   "Назад",
 	}
+
+	var HideOrShowButton tele.InlineButton
+	if showOrHide == "show" {
+		HideOrShowButton = tele.InlineButton{
+			Unique: fmt.Sprintf("ptshow%d", numberSubject),
+			Text:   "Показать названия КМов",
+		}
+	} else {
+		HideOrShowButton = tele.InlineButton{
+			Unique: fmt.Sprintf("pt%d", numberSubject),
+			Text:   "Скрыть названия КМов",
+		}
+	}
+
 	keyboard := make([][]tele.InlineButton, 2)
-	keyboard[0] = append(keyboard[0], hideButton)
+	keyboard[0] = append(keyboard[0], HideOrShowButton)
 	keyboard[1] = append(keyboard[1], backButton)
+
 	return &tele.ReplyMarkup{
 		InlineKeyboard: keyboard,
 	}
 }
 
-func makePtBackInlineMarkupWithShow(numberSubject int) *tele.ReplyMarkup {
-	showButton := tele.InlineButton{
-		Unique: fmt.Sprintf("ptshow%d", numberSubject),
-		Text:   "Показать названия КМов",
-	}
-
-	backButton := tele.InlineButton{
-		Unique: "ptback",
-		Text:   "Назад",
-	}
-	keyboard := make([][]tele.InlineButton, 2)
-	keyboard[0] = append(keyboard[0], showButton)
-	keyboard[1] = append(keyboard[1], backButton)
-	return &tele.ReplyMarkup{
-		InlineKeyboard: keyboard,
-	}
-}
-
-func hideStNames(st *user.SubjectTable) *user.SubjectTable {
-	for i := range st.Rows {
-		if !(strings.HasPrefix(st.Rows[i].Name, "Балл текущего контроля") ||
-			strings.HasPrefix(st.Rows[i].Name, "Итоговая оценка:") ||
-			strings.HasPrefix(st.Rows[i].Name, "Промежуточная аттестация")) {
-			st.Rows[i].Name = fmt.Sprintf("КМ-%d", i+1)
+func hideControlEventsNames(st *bars.SubjectTable) *bars.SubjectTable {
+	for i := range st.ControlEvents {
+		if !(strings.HasPrefix(st.ControlEvents[i].Name, "Балл текущего контроля") ||
+			strings.HasPrefix(st.ControlEvents[i].Name, "Итоговая оценка:") ||
+			strings.HasPrefix(st.ControlEvents[i].Name, "Промежуточная аттестация")) {
+			st.ControlEvents[i].Name = fmt.Sprintf("КМ-%d", i+1)
 		}
 	}
 	return st
 }
 
-func extractTablesData(tables []user.SubjectTable) string {
-	var result string
-	for i, subjectTable := range tables {
-		result += fmt.Sprintf("*%d:* %s\n\n", i+1, subjectTable.Name)
+func extractSubjectsNames(tables []bars.SubjectTable) string {
+	var b strings.Builder
+
+	for i, st := range tables {
+		fmt.Fprintf(&b, fmt.Sprintf("*%d:* %s\n\n", i+1, st.Name))
 	}
-	result += "Для просмотра оценок по определённому предмету, пользуйтесь кнопочным меню."
-	return result
+
+	fmt.Fprint(&b, "Для просмотра оценок по определённому предмету, пользуйтесь кнопочным меню.")
+
+	return b.String()
 }
 
-func NewProcessStrategy(service model.Service, botError, unavailablePT string) *ProcessStrategy {
+func NewProcessStrategy(service messageProvider, botError, unavailablePT string) *ProcessStrategy {
 	return &ProcessStrategy{service: service, botError: botError, unavailablePT: unavailablePT}
 }

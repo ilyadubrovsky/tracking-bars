@@ -55,6 +55,7 @@ func NewApp(cfg *config.Config) (*App, error) {
 	if err != nil {
 		a.logger.Fatalf("failed to create a new producer due to error: %v", err)
 	}
+	a.producer = producer
 
 	a.logger.Infof("service initializing")
 	a.service = service.NewService(a.logger, a.cfg, a.bot, producer)
@@ -71,29 +72,17 @@ func NewApp(cfg *config.Config) (*App, error) {
 		a.logger.Fatalf("failed to declare an exchange due to error: %v", err)
 	}
 
-	a.logger.Info("producer: 'auth requests' queue initializing and binding")
-	if err = producer.DeclareAndBindQueue(a.cfg.RabbitMQ.Producer.UserExchange,
-		a.cfg.RabbitMQ.Producer.AuthRequests, a.cfg.RabbitMQ.Producer.AuthRequestsKey); err != nil {
-		a.logger.Fatalf("failed to declare and bind a queue due to error: %v", err)
-	}
+	a.declareAndBindQueue(a.cfg.RabbitMQ.Producer.UserExchange,
+		a.cfg.RabbitMQ.Producer.AuthRequests, a.cfg.RabbitMQ.Producer.AuthRequestsKey)
 
-	a.logger.Info("producer: 'logout requests' queue initializing and binding")
-	if err = producer.DeclareAndBindQueue(a.cfg.RabbitMQ.Producer.UserExchange,
-		a.cfg.RabbitMQ.Producer.LogoutRequests, a.cfg.RabbitMQ.Producer.LogoutRequestsKey); err != nil {
-		a.logger.Fatalf("failed to declare and bind a queue due to error: %v", err)
-	}
+	a.declareAndBindQueue(a.cfg.RabbitMQ.Producer.UserExchange,
+		a.cfg.RabbitMQ.Producer.LogoutRequests, a.cfg.RabbitMQ.Producer.LogoutRequestsKey)
 
-	a.logger.Info("producer: 'news requests' queue initializing and binding")
-	if err = producer.DeclareAndBindQueue(a.cfg.RabbitMQ.Producer.UserExchange,
-		a.cfg.RabbitMQ.Producer.NewsRequests, a.cfg.RabbitMQ.Producer.NewsRequestsKey); err != nil {
-		a.logger.Fatalf("failed to declare and bind a queue due to error: %v", err)
-	}
+	a.declareAndBindQueue(a.cfg.RabbitMQ.Producer.UserExchange,
+		a.cfg.RabbitMQ.Producer.NewsRequests, a.cfg.RabbitMQ.Producer.NewsRequestsKey)
 
-	a.logger.Info("producer: 'delete user requests' queue initializing and binding")
-	if err = producer.DeclareAndBindQueue(a.cfg.RabbitMQ.Producer.UserExchange,
-		a.cfg.RabbitMQ.Producer.DeleteUserRequests, a.cfg.RabbitMQ.Producer.DeleteUserRequestsKey); err != nil {
-		a.logger.Fatalf("failed to declare and bind a queue due to error: %v", err)
-	}
+	a.declareAndBindQueue(a.cfg.RabbitMQ.Producer.UserExchange,
+		a.cfg.RabbitMQ.Producer.DeleteUserRequests, a.cfg.RabbitMQ.Producer.DeleteUserRequestsKey)
 
 	a.logger.Info("producer: 'grades' exchange initializing")
 	if err = producer.DeclareExchange(a.cfg.RabbitMQ.Producer.GradesExchange, amqp.ExchangeDirect,
@@ -101,14 +90,18 @@ func NewApp(cfg *config.Config) (*App, error) {
 		a.logger.Fatalf("failed to declare an exchange due to error: %v", err)
 	}
 
-	a.logger.Info("producer: 'grades requests' queue initializing and binding")
-	if err = producer.DeclareAndBindQueue(a.cfg.RabbitMQ.Producer.GradesExchange,
-		a.cfg.RabbitMQ.Producer.GradesRequests, a.cfg.RabbitMQ.Producer.GradesRequestsKey); err != nil {
-		a.logger.Fatalf("failed to declare and bind a queue due to error: %v", err)
-	}
+	a.declareAndBindQueue(a.cfg.RabbitMQ.Producer.GradesExchange,
+		a.cfg.RabbitMQ.Producer.GradesRequests, a.cfg.RabbitMQ.Producer.GradesRequestsKey)
 
 	a.producer = producer
 	return &a, nil
+}
+
+func (a *App) declareAndBindQueue(exchange, queue, key string) {
+	a.logger.Infof("producer: '%s' qeueu initializing and binding", queue)
+	if err := a.producer.DeclareAndBindQueue(exchange, queue, key); err != nil {
+		a.logger.Fatalf("failed to declare and bind a queue due to error: %v", err)
+	}
 }
 
 func (a *App) startConsume() {

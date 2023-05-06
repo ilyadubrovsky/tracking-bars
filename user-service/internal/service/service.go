@@ -3,10 +3,9 @@ package service
 import (
 	"context"
 	"errors"
+	"github.com/ilyadubrovsky/bars"
 	"time"
-	"user-service/internal/config"
 	"user-service/internal/entity/user"
-	"user-service/pkg/client/bars"
 	"user-service/pkg/logging"
 )
 
@@ -15,9 +14,17 @@ var (
 	ErrNotAuthorized     = errors.New("user not authorized")
 )
 
+type userRepository interface {
+	Create(ctx context.Context, u user.User) error
+	GetAllUsers(ctx context.Context, aq ...string) ([]user.User, error)
+	AuthorizationCheck(ctx context.Context, id int64) (*bool, error)
+	Reauthorization(ctx context.Context, id int64, username string, password []byte, deleted bool) error
+	LogoutUser(ctx context.Context, id int64) error
+	Delete(ctx context.Context, id int64) error
+}
+
 type Service struct {
-	usersStorage user.Repository
-	cfg          *config.Config
+	usersStorage userRepository
 	logger       *logging.Logger
 }
 
@@ -36,13 +43,14 @@ func (s *Service) Authorization(ctx context.Context, dto user.CreateUserDTO) (bo
 		return false, ErrAlreadyAuthorized
 	}
 
-	cl := bars.NewClient(s.cfg.Bars.URLs.RegistrationURL)
+	cl := bars.NewClient()
 
 	err = cl.Authorization(ctx, dto.Username, dto.Password)
 
-	if errors.Is(err, bars.ErrNoAuth) {
-		return false, nil
-	} else if err != nil {
+	if err != nil {
+		if errors.Is(err, bars.ErrNoAuth) {
+			return false, nil
+		}
 		s.logger.Errorf("failed to Authorization due to error: %v", err)
 		s.logger.Debugf("UserID: %d, Username: %s", dto.ID, dto.Username)
 		return false, err
@@ -75,13 +83,13 @@ func (s *Service) Logout(ctx context.Context, id int64) error {
 
 	defer cancel()
 
-	isAuthorized, err := s.usersStorage.AuthorizationCheck(ctx, id)
+	alreadyAuthorized, err := s.usersStorage.AuthorizationCheck(ctx, id)
 	if err != nil {
 		s.logger.Errorf("users repository: failed to AuthorizationCheck due to error: %v", err)
 		return err
 	}
 
-	if isAuthorized == nil || *isAuthorized == true {
+	if alreadyAuthorized == nil || *alreadyAuthorized == true {
 		return ErrNotAuthorized
 	}
 
@@ -93,12 +101,12 @@ func (s *Service) Logout(ctx context.Context, id int64) error {
 	return nil
 }
 
-func (s *Service) GetUsersIDByOpts(ctx context.Context, opts ...string) ([]user.User, error) {
+func (s *Service) GetUsersByOpts(ctx context.Context, opts ...string) ([]user.User, error) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 
 	defer cancel()
 
-	usrs, err := s.usersStorage.GetAllUsersID(ctx, opts...)
+	usrs, err := s.usersStorage.GetAllUsers(ctx, opts...)
 	if err != nil {
 		s.logger.Errorf("users repository: failed to GetAllUsersID due to error: %v", err)
 		return nil, err
@@ -120,10 +128,9 @@ func (s *Service) DeleteUser(ctx context.Context, id int64) error {
 	return nil
 }
 
-func NewService(cfg *config.Config, usersStorage user.Repository, logger *logging.Logger) *Service {
+func NewService(usersStorage userRepository, logger *logging.Logger) *Service {
 	return &Service{
 		usersStorage: usersStorage,
-		cfg:          cfg,
 		logger:       logger,
 	}
 }

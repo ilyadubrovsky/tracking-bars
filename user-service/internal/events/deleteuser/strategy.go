@@ -7,8 +7,12 @@ import (
 	"user-service/internal/events/model"
 )
 
+type userDeleter interface {
+	DeleteUser(ctx context.Context, id int64) error
+}
+
 type ProcessStrategy struct {
-	service model.Service
+	service userDeleter
 }
 
 func (s *ProcessStrategy) Process(body []byte) ([]model.SendMessageRequest, error) {
@@ -33,6 +37,6 @@ func (s *ProcessStrategy) Process(body []byte) ([]model.SendMessageRequest, erro
 	return nil, nil
 }
 
-func NewProcessStrategy(service model.Service) *ProcessStrategy {
+func NewProcessStrategy(service userDeleter) *ProcessStrategy {
 	return &ProcessStrategy{service: service}
 }
