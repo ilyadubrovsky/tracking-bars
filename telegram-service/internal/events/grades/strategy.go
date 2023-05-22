@@ -10,13 +10,17 @@ import (
 	"strings"
 )
 
-type messageProvider interface {
+const (
+	numberOfButtonsInRow = 5
+)
+
+type messageManager interface {
 	EditMessageWithOpts(id int64, messageid int, msg string, opts ...interface{}) error
 	SendMessageWithOpts(id int64, msg string, opts ...interface{}) error
 }
 
 type ProcessStrategy struct {
-	service       messageProvider
+	service       messageManager
 	botError      string
 	unavailablePT string
 }
@@ -57,7 +61,7 @@ func (s *ProcessStrategy) Process(body []byte) error {
 		ptBackInlineMarkup := makePtBackInlineMarkup(n, "hide")
 
 		return s.service.EditMessageWithOpts(response.RequestID, response.MessageID,
-			stToTelegramMessage(&response.ProgressTable.Tables[n-1]), tele.ModeMarkdown, ptBackInlineMarkup)
+			SubjectTableToTelegramMessage(&response.ProgressTable.Tables[n-1]), tele.ModeMarkdown, ptBackInlineMarkup)
 	} else if regexp.MustCompile(`^[0-9]+$`).MatchString(response.CallbackData) {
 		n, err := strconv.Atoi(response.CallbackData)
 		if err != nil {
@@ -71,13 +75,13 @@ func (s *ProcessStrategy) Process(body []byte) error {
 		ptBackInlineMarkup := makePtBackInlineMarkup(n, "show")
 
 		return s.service.EditMessageWithOpts(response.RequestID, response.MessageID,
-			stToTelegramMessage(hideControlEventsNames(&response.ProgressTable.Tables[n-1])), tele.ModeMarkdown, ptBackInlineMarkup)
+			SubjectTableToTelegramMessage(hideControlEventsNames(&response.ProgressTable.Tables[n-1])), tele.ModeMarkdown, ptBackInlineMarkup)
 	} else {
 		return s.service.EditMessageWithOpts(response.RequestID, response.MessageID, s.botError)
 	}
 }
 
-func stToTelegramMessage(st *bars.SubjectTable) string {
+func SubjectTableToTelegramMessage(st *bars.SubjectTable) string {
 	var b strings.Builder
 
 	fmt.Fprintf(&b, fmt.Sprintf("*Название дисциплины:*\n%s\n\n", st.Name))
@@ -90,8 +94,7 @@ func stToTelegramMessage(st *bars.SubjectTable) string {
 }
 
 func makePtInlineMarkup(pt *bars.ProgressTable) *tele.ReplyMarkup {
-
-	numberOfRows, numberOfButtonsInLastRow, numberOfButtonsInRow := 0, 0, 5
+	numberOfRows, numberOfButtonsInLastRow := 0, 0
 	if numberOfSubjects := len(pt.Tables); numberOfSubjects >= numberOfButtonsInRow {
 		if remainder := numberOfSubjects % numberOfButtonsInRow; remainder == 0 {
 			numberOfRows = numberOfSubjects / numberOfButtonsInRow
@@ -137,25 +140,24 @@ func makePtInlineMarkup(pt *bars.ProgressTable) *tele.ReplyMarkup {
 func makePtBackInlineMarkup(numberSubject int, showOrHide string) *tele.ReplyMarkup {
 	backButton := tele.InlineButton{
 		Unique: "ptback",
-		Text:   "Назад",
+		Text:   "←",
 	}
 
-	var HideOrShowButton tele.InlineButton
+	var showOrHideButton tele.InlineButton
 	if showOrHide == "show" {
-		HideOrShowButton = tele.InlineButton{
+		showOrHideButton = tele.InlineButton{
 			Unique: fmt.Sprintf("ptshow%d", numberSubject),
-			Text:   "Показать названия КМов",
+			Text:   "↓",
 		}
 	} else {
-		HideOrShowButton = tele.InlineButton{
+		showOrHideButton = tele.InlineButton{
 			Unique: fmt.Sprintf("pt%d", numberSubject),
-			Text:   "Скрыть названия КМов",
+			Text:   "↑",
 		}
 	}
 
-	keyboard := make([][]tele.InlineButton, 2)
-	keyboard[0] = append(keyboard[0], HideOrShowButton)
-	keyboard[1] = append(keyboard[1], backButton)
+	keyboard := make([][]tele.InlineButton, 1)
+	keyboard[0] = []tele.InlineButton{backButton, showOrHideButton}
 
 	return &tele.ReplyMarkup{
 		InlineKeyboard: keyboard,
@@ -185,6 +187,6 @@ func extractSubjectsNames(tables []bars.SubjectTable) string {
 	return b.String()
 }
 
-func NewProcessStrategy(service messageProvider, botError, unavailablePT string) *ProcessStrategy {
+func NewProcessStrategy(service messageManager, botError, unavailablePT string) *ProcessStrategy {
 	return &ProcessStrategy{service: service, botError: botError, unavailablePT: unavailablePT}
 }

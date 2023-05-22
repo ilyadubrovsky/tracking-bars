@@ -121,6 +121,10 @@ func (a *App) handleGhCommand(c tele.Context) error {
 func (a *App) handleSqCommand(c tele.Context) error {
 	msg := strings.Replace(c.Message().Text, "/sq", "", -1)
 
+	if len(strings.Split(c.Message().Text, " ")) < 2 {
+		return a.service.SendMessageWithOpts(c.Sender().ID, "Обращение не было указано, его необходимо написать через пробел после команды.")
+	}
+
 	if msg == "" {
 		return a.service.SendMessageWithOpts(c.Sender().ID, a.cfg.Responses.BotError)
 	}
@@ -271,6 +275,17 @@ func (a *App) handleAuthUserCommand(c tele.Context) error {
 	}
 
 	return a.service.SendMessageWithOpts(c.Sender().ID, fmt.Sprintf("Запрос на авторизацию пользователя %d принят и ответ будет отправлен в ближайшее время.", request.UserID))
+}
+
+func (a *App) handleFixGradesCommand(c tele.Context) error {
+	return a.service.SendMessageWithOpts(c.Sender().ID,
+		"Ваши оценки не могут быть получены, поскольку страница с оценками не является основной страницей в Вашем аккаунте БАРС."+
+			"\n\n*Для того, чтобы это исправить и бот заработал, выполните следующие действия:*\n"+
+			"*1.* Зайдите в БАРС (через браузер телефона, компьютера или иным способом);\n"+
+			"*2.* Зайдите на страницу оценок (именно в раздел \"Оценки БАРС\", а не \"Сводка\";\n"+
+			"*3.* Нажмите на значок шестерёнки в верхнем меню страницы (правый верхний угол), затем на кнопку \"Установить\";\n"+
+			"*4.* Выполните авторизацию в боте повторно, всё должно заработать.\n\n"+
+			"Если возникнут вопросы или эти действия не помогут, Вы можете написать своё обращение с помощью команды /sq.", tele.ModeMarkdown)
 }
 
 func (a *App) handleSendmsgCommand(c tele.Context) error {

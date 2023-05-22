@@ -5,9 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"user-service/internal/apperror"
 	"user-service/internal/config"
 	"user-service/internal/events/model"
-	"user-service/internal/service"
 )
 
 type userLogouter interface {
@@ -31,7 +31,7 @@ func (s *ProcessStrategy) Process(body []byte) ([]model.SendMessageRequest, erro
 	}
 
 	err := s.service.Logout(context.Background(), request.UserID)
-	if errors.Is(err, service.ErrNotAuthorized) {
+	if errors.Is(err, apperror.ErrNotAuthorized) {
 		response.Message = s.cfg.Responses.Bars.NotAuthorized
 	} else if err != nil {
 		response.Message = s.cfg.Responses.BotError

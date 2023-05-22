@@ -14,14 +14,18 @@ type Service interface {
 }
 
 type ProcessStrategy struct {
-	service       Service
-	unavailablePT string
-	notAuthorized string
-	botError      string
+	service         Service
+	unavailablePT   string
+	notAuthorized   string
+	botError        string
+	ptNotProvided   string
+	wrongGradesPage string
 }
 
 func (s *ProcessStrategy) Process(body []byte) (*model.GetGradesResponse, error) {
-	var request GetGradesRequest
+	var (
+		request GetGradesRequest
+	)
 	if err := json.Unmarshal(body, &request); err != nil {
 		return nil, fmt.Errorf("json unmarshal: %v", err)
 	}
@@ -44,8 +48,21 @@ func (s *ProcessStrategy) Process(body []byte) (*model.GetGradesResponse, error)
 	} else if len(progressTable.Tables) == 0 {
 		pt, err := s.service.GetProgressTableByRequest(context.Background(), request.RequestID)
 		if err != nil {
-			response.ResponseMessage = s.unavailablePT
-			return response, fmt.Errorf("service: %v", err)
+			switch err {
+			case bars.ErrWrongGradesPage:
+				response.ResponseMessage = s.wrongGradesPage
+			case bars.ErrNoAuth:
+				response.ResponseMessage = s.notAuthorized
+			default:
+				response.ResponseMessage = s.botError
+				return response, fmt.Errorf("service: %v", err)
+			}
+			return response, nil
+		}
+		if pt == nil {
+			response.ResponseMessage = s.notAuthorized
+		} else if len(pt.Tables) == 0 {
+			response.ResponseMessage = s.ptNotProvided
 		} else {
 			response.ProgressTable = *pt
 		}
@@ -56,7 +73,7 @@ func (s *ProcessStrategy) Process(body []byte) (*model.GetGradesResponse, error)
 	return response, nil
 }
 
-func NewProcessStrategy(service Service, unavailablePT, notAuthorized, botError string) *ProcessStrategy {
-	return &ProcessStrategy{service: service, unavailablePT: unavailablePT,
-		notAuthorized: notAuthorized, botError: botError}
+func NewProcessStrategy(service Service, notAuthorized, botError, ptNotProvided, wrongGradesPage string) *ProcessStrategy {
+	return &ProcessStrategy{service: service, notAuthorized: notAuthorized,
+		botError: botError, ptNotProvided: ptNotProvided, wrongGradesPage: wrongGradesPage}
 }

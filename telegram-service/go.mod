@@ -3,10 +3,10 @@ module telegram-service
 go 1.20
 
 require (
-	github.com/ilyadubrovsky/bars v0.0.0-20230503204412-1e4e4b2b579a
+	github.com/ilyadubrovsky/bars v0.0.0-20230519092705-75fdb2417210
 	github.com/ilyakaznacheev/cleanenv v1.4.2
 	github.com/joho/godotenv v1.5.1
-	github.com/sirupsen/logrus v1.9.0
+	github.com/sirupsen/logrus v1.9.2
 	github.com/streadway/amqp v1.0.0
 	gopkg.in/telebot.v3 v3.1.3
 )

@@ -14,7 +14,7 @@ type pgConfig struct {
 	Database string
 }
 
-func NewPgConfig(username, password, host, port, database string) *pgConfig {
+func NewConfig(username, password, host, port, database string) *pgConfig {
 	return &pgConfig{
 		Username: username,
 		Password: password,
@@ -25,6 +25,7 @@ func NewPgConfig(username, password, host, port, database string) *pgConfig {
 }
 
 func NewClient(ctx context.Context, cfg *pgConfig) (*pgxpool.Pool, error) {
+	fmt.Println(cfg)
 	connString := fmt.Sprintf("postgres://%s:%s@%s:%s/%s", cfg.Username, cfg.Password, cfg.Host, cfg.Port, cfg.Database)
 	pool, err := pgxpool.Connect(ctx, connString)
 	if err != nil {

@@ -1,4 +1,4 @@
-package storage
+package postgresql
 
 import (
 	"context"
@@ -13,11 +13,11 @@ const (
 )
 
 type changesStorage struct {
-	client Client
+	client client
 	logger *logging.Logger
 }
 
-func NewChangesPostgres(client Client, logger *logging.Logger) *changesStorage {
+func NewChangesPostgres(client client, logger *logging.Logger) *changesStorage {
 	return &changesStorage{
 		client: client,
 		logger: logger,

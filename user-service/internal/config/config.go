@@ -37,6 +37,7 @@ type Bars struct {
 	AlreadyAuthorized       string `yaml:"already_authorized" env-required:"true"`
 	SuccessfulAuthorization string `yaml:"successful_authorization" env-required:"true"`
 	SuccessfulLogout        string `yaml:"successful_logout" env-required:"true"`
+	WrongGradesPage         string `yaml:"wrong_grades_page" env-required:"true"`
 }
 
 type Responses struct {

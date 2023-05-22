@@ -1,13 +1,15 @@
 package app
 
 import (
+	"context"
 	"fmt"
 	"github.com/streadway/amqp"
 	tele "gopkg.in/telebot.v3"
 	"gopkg.in/telebot.v3/middleware"
 	"os"
+	"os/signal"
 	"strconv"
-	"sync"
+	"syscall"
 	"telegram-service/internal/config"
 	"telegram-service/internal/events"
 	"telegram-service/internal/events/grades"
@@ -34,7 +36,7 @@ type App struct {
 	gradesStrategy   events.ProcessStrategy
 }
 
-func NewApp(cfg *config.Config) (*App, error) {
+func Run(cfg *config.Config) error {
 	var a App
 	a.cfg = cfg
 
@@ -42,7 +44,7 @@ func NewApp(cfg *config.Config) (*App, error) {
 
 	bot, err := a.createBot()
 	if err != nil {
-		return nil, err
+		return err
 	}
 	a.bot = bot
 
@@ -94,7 +96,24 @@ func NewApp(cfg *config.Config) (*App, error) {
 		a.cfg.RabbitMQ.Producer.GradesRequests, a.cfg.RabbitMQ.Producer.GradesRequestsKey)
 
 	a.producer = producer
-	return &a, nil
+
+	a.logger.Info("app launching")
+	a.logger.Info("app: start consume")
+	a.startConsume()
+	a.logger.Info("app: telegram bot launching")
+	go a.bot.Start()
+	a.logger.Info("app started")
+
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+	<-ctx.Done()
+
+	a.logger.Info("app shutting down")
+
+	// TODO close RabbitMQ connections
+
+	return nil
+
 }
 
 func (a *App) declareAndBindQueue(exchange, queue, key string) {
@@ -171,6 +190,8 @@ func (a *App) createBot() (*tele.Bot, error) {
 
 	abot.Handle("/help", a.handleHelpCommand)
 
+	abot.Handle("/fixgrades", a.handleFixGradesCommand)
+
 	abot.Handle("/auth", a.handleAuthCommand)
 
 	abot.Handle("/logout", a.handleLogoutCommand)
@@ -198,19 +219,4 @@ func (a *App) createBot() (*tele.Bot, error) {
 	adminGroup.Handle("/sendmsg", a.handleSendmsgCommand)
 
 	return abot, nil
-}
-
-func (a *App) Run() {
-	a.logger.Info("app launching")
-
-	var wg sync.WaitGroup
-	wg.Add(1)
-
-	a.startConsume()
-
-	a.logger.Info("telegram bot launching")
-	a.bot.Start()
-
-	wg.Wait()
-
 }

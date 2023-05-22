@@ -30,13 +30,13 @@ func (u *User) DecryptPassword() (string, error) {
 	return aes.DecryptCFB([]byte(os.Getenv("ENCRYPTION_KEY")), u.Password)
 }
 
-type CreateUserDTO struct {
+type AuthorizationUserDTO struct {
 	ID       int64  `json:"id"`
 	Username string `json:"username"`
 	Password string `json:"password"`
 }
 
-func NewUser(dto CreateUserDTO) User {
+func NewUser(dto AuthorizationUserDTO) User {
 	return User{
 		ID:            dto.ID,
 		Username:      dto.Username,

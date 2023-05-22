@@ -5,7 +5,8 @@ import (
 	"fmt"
 	"github.com/streadway/amqp"
 	"os"
-	"sync"
+	"os/signal"
+	"syscall"
 	"user-service/internal/config"
 	"user-service/internal/entity/user"
 	"user-service/internal/events"
@@ -22,7 +23,7 @@ import (
 )
 
 type Service interface {
-	Authorization(ctx context.Context, dto user.CreateUserDTO) (bool, error)
+	Authorization(ctx context.Context, dto user.AuthorizationUserDTO) error
 	Logout(ctx context.Context, id int64) error
 	GetUsersByOpts(ctx context.Context, opts ...string) ([]user.User, error)
 	DeleteUser(ctx context.Context, id int64) error
@@ -39,7 +40,7 @@ type App struct {
 	deleteUserStrategy events.ProcessStrategy
 }
 
-func NewApp(cfg *config.Config) (*App, error) {
+func Run(cfg *config.Config) error {
 	var a App
 	a.cfg = cfg
 
@@ -52,7 +53,7 @@ func NewApp(cfg *config.Config) (*App, error) {
 	postgresqlClient, err := postgresql.NewClient(context.Background(), pgConfig)
 	if err != nil {
 		a.logger.Errorf("failed to connection to postgresql due to error: %v", err)
-		return nil, err
+		return err
 	}
 
 	a.logger.Info("users storage initializing")
@@ -96,7 +97,21 @@ func NewApp(cfg *config.Config) (*App, error) {
 	}
 
 	a.producer = producer
-	return &a, nil
+
+	a.logger.Info("app launching")
+	a.logger.Info("app: start consume")
+	a.startConsume()
+	a.logger.Info("app started")
+
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+	<-ctx.Done()
+
+	a.logger.Info("app shutting down")
+	postgresqlClient.Close()
+	// TODO close RabbitMQ connections
+
+	return nil
 }
 
 func (a *App) startConsume() {
@@ -151,15 +166,4 @@ func (a *App) initializeConsume(consumer mq.Consumer, queue, exchange, key strin
 	}
 
 	return nil
-}
-
-func (a *App) Run() {
-	a.logger.Info("app launching")
-
-	var wg sync.WaitGroup
-	wg.Add(1)
-
-	a.startConsume()
-
-	wg.Wait()
 }

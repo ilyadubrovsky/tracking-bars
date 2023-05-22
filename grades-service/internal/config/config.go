@@ -16,10 +16,11 @@ type Config struct {
 }
 
 type Bars struct {
-	ExpiredData   string `yaml:"expired_data" env-required:"true"`
-	NotAuthorized string `yaml:"not_authorized" env-required:"true"`
-	UnavailablePT string `yaml:"unavailable_pt" env-required:"true"`
-	DefaultAnswer string `yaml:"default_answer" env-required:"true"`
+	ExpiredData     string `yaml:"expired_data" env-required:"true"`
+	NotAuthorized   string `yaml:"not_authorized" env-required:"true"`
+	DefaultAnswer   string `yaml:"default_answer" env-required:"true"`
+	PTNotProvided   string `yaml:"pt_not_provided" env-required:"true"`
+	WrongGradesPage string `yaml:"wrong_grades_page" env-required:"true"`
 }
 
 type Responses struct {

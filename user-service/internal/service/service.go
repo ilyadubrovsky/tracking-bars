@@ -5,13 +5,9 @@ import (
 	"errors"
 	"github.com/ilyadubrovsky/bars"
 	"time"
+	"user-service/internal/apperror"
 	"user-service/internal/entity/user"
 	"user-service/pkg/logging"
-)
-
-var (
-	ErrAlreadyAuthorized = errors.New("user already authorized")
-	ErrNotAuthorized     = errors.New("user not authorized")
 )
 
 type userRepository interface {
@@ -28,7 +24,7 @@ type Service struct {
 	logger       *logging.Logger
 }
 
-func (s *Service) Authorization(ctx context.Context, dto user.CreateUserDTO) (bool, error) {
+func (s *Service) Authorization(ctx context.Context, dto user.AuthorizationUserDTO) error {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 
 	defer cancel()
@@ -36,11 +32,11 @@ func (s *Service) Authorization(ctx context.Context, dto user.CreateUserDTO) (bo
 	isAuthorized, err := s.usersStorage.AuthorizationCheck(ctx, dto.ID)
 	if err != nil {
 		s.logger.Errorf("users repository: failed to AuthorizationCheck due to error: %v", err)
-		return false, err
+		return err
 	}
 
 	if isAuthorized != nil && *isAuthorized == false {
-		return false, ErrAlreadyAuthorized
+		return apperror.ErrAlreadyAuthorized
 	}
 
 	cl := bars.NewClient()
@@ -48,12 +44,12 @@ func (s *Service) Authorization(ctx context.Context, dto user.CreateUserDTO) (bo
 	err = cl.Authorization(ctx, dto.Username, dto.Password)
 
 	if err != nil {
-		if errors.Is(err, bars.ErrNoAuth) {
-			return false, nil
+		if errors.Is(err, bars.ErrNoAuth) || errors.Is(err, bars.ErrWrongGradesPage) {
+			return err
 		}
 		s.logger.Errorf("failed to Authorization due to error: %v", err)
 		s.logger.Debugf("UserID: %d, Username: %s", dto.ID, dto.Username)
-		return false, err
+		return err
 	}
 
 	usr := user.NewUser(dto)
@@ -61,7 +57,7 @@ func (s *Service) Authorization(ctx context.Context, dto user.CreateUserDTO) (bo
 	if err = usr.EncryptPassword(); err != nil {
 		s.logger.Tracef("UserID: %d, username: %s", dto.ID, dto.Username)
 		s.logger.Errorf("failed to encrypt a password due to error: %v", err)
-		return false, err
+		return err
 	}
 
 	if isAuthorized != nil && *isAuthorized == true {
@@ -72,10 +68,10 @@ func (s *Service) Authorization(ctx context.Context, dto user.CreateUserDTO) (bo
 
 	if err != nil {
 		s.logger.Errorf("users repository: failed to Create/Reauthorization due to error: %v", err)
-		return false, err
+		return err
 	}
 
-	return true, nil
+	return nil
 }
 
 func (s *Service) Logout(ctx context.Context, id int64) error {
@@ -90,7 +86,7 @@ func (s *Service) Logout(ctx context.Context, id int64) error {
 	}
 
 	if alreadyAuthorized == nil || *alreadyAuthorized == true {
-		return ErrNotAuthorized
+		return apperror.ErrNotAuthorized
 	}
 
 	if err = s.usersStorage.LogoutUser(ctx, id); err != nil {
@@ -106,13 +102,13 @@ func (s *Service) GetUsersByOpts(ctx context.Context, opts ...string) ([]user.Us
 
 	defer cancel()
 
-	usrs, err := s.usersStorage.GetAllUsers(ctx, opts...)
+	users, err := s.usersStorage.GetAllUsers(ctx, opts...)
 	if err != nil {
 		s.logger.Errorf("users repository: failed to GetAllUsersID due to error: %v", err)
 		return nil, err
 	}
 
-	return usrs, nil
+	return users, nil
 }
 
 func (s *Service) DeleteUser(ctx context.Context, id int64) error {

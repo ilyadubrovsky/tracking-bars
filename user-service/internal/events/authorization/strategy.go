@@ -3,20 +3,20 @@ package authorization
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
+	"github.com/ilyadubrovsky/bars"
+	"user-service/internal/apperror"
 	"user-service/internal/config"
 	"user-service/internal/entity/user"
 	"user-service/internal/events/model"
-	"user-service/internal/service"
 )
 
-type userAuthorizationer interface {
-	Authorization(ctx context.Context, dto user.CreateUserDTO) (bool, error)
+type userAuthorizer interface {
+	Authorization(ctx context.Context, dto user.AuthorizationUserDTO) error
 }
 
 type ProcessStrategy struct {
-	service userAuthorizationer
+	service userAuthorizer
 	cfg     *config.Config
 }
 
@@ -26,7 +26,7 @@ func (s *ProcessStrategy) Process(body []byte) ([]model.SendMessageRequest, erro
 		return nil, fmt.Errorf("json unmarshal: %v", err)
 	}
 
-	dto := user.CreateUserDTO{
+	dto := user.AuthorizationUserDTO{
 		ID:       request.UserID,
 		Username: request.Username,
 		Password: request.Password,
@@ -36,13 +36,17 @@ func (s *ProcessStrategy) Process(body []byte) ([]model.SendMessageRequest, erro
 		RequestID: request.RequestID,
 	}
 
-	status, err := s.service.Authorization(context.Background(), dto)
-	if errors.Is(err, service.ErrAlreadyAuthorized) {
-		response.Message = s.cfg.Responses.Bars.AlreadyAuthorized
-	} else if err != nil {
-		response.Message = s.cfg.Responses.Bars.Error
-	} else if !status {
-		response.Message = s.cfg.Responses.Bars.WrongData
+	if err := s.service.Authorization(context.Background(), dto); err != nil {
+		switch err {
+		case apperror.ErrAlreadyAuthorized:
+			response.Message = s.cfg.Responses.Bars.AlreadyAuthorized
+		case bars.ErrWrongGradesPage:
+			response.Message = s.cfg.Responses.Bars.WrongGradesPage
+		case bars.ErrNoAuth:
+			response.Message = s.cfg.Responses.Bars.WrongData
+		default:
+			response.Message = s.cfg.Responses.Bars.Error
+		}
 	} else {
 		response.Message = s.cfg.Responses.Bars.SuccessfulAuthorization
 	}
@@ -51,6 +55,6 @@ func (s *ProcessStrategy) Process(body []byte) ([]model.SendMessageRequest, erro
 
 }
 
-func NewProcessStrategy(service userAuthorizationer, cfg *config.Config) *ProcessStrategy {
+func NewProcessStrategy(service userAuthorizer, cfg *config.Config) *ProcessStrategy {
 	return &ProcessStrategy{service: service, cfg: cfg}
 }

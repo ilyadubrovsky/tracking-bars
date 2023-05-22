@@ -1,13 +1,13 @@
 build:
-	docker-compose build telegram-service
-	docker-compose build user-service
-	docker-compose build grades-service
+	docker compose build telegram-service
+	docker compose build user-service
+	docker compose build grades-service
 
 run:
-	docker-compose up -d
+	docker compose up -d
 
 stop:
-	docker-compose down
+	docker compose down
 
 migrate-up:
 	migrate -path ./migrations -database "postgres://postgres:12345678@localhost:5433/trackingbars?sslmode=disable" up

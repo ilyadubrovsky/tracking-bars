@@ -19,10 +19,7 @@ func main() {
 		logger.Panic(err)
 	}
 
-	a, err := app.NewApp(cfg)
-	if err != nil {
+	if err = app.Run(cfg); err != nil {
 		logger.Panic(err)
 	}
-
-	a.Run()
 }

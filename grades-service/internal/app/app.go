@@ -8,13 +8,21 @@ import (
 	"grades-service/internal/events"
 	"grades-service/internal/events/grades"
 	"grades-service/internal/service"
-	storage "grades-service/internal/storage/postgresql"
+	db "grades-service/internal/storage/postgresql"
+	cache "grades-service/internal/storage/redis"
 	"grades-service/pkg/client/mq"
 	"grades-service/pkg/client/mq/rabbitmq"
 	"grades-service/pkg/client/postgresql"
+	"grades-service/pkg/client/redis"
 	"grades-service/pkg/logging"
 	"os"
-	"sync"
+	"os/signal"
+	"syscall"
+	"time"
+)
+
+const (
+	shutdownTimeout = 5 * time.Second
 )
 
 type Service interface {
@@ -29,25 +37,36 @@ type App struct {
 	logger         *logging.Logger
 }
 
-func NewApp(cfg *config.Config) (*App, error) {
+func Run(cfg *config.Config) error {
 	var a App
 	a.cfg = cfg
 
 	a.logger = logging.GetLogger()
 
-	pgConfig := postgresql.NewPgConfig(os.Getenv("PG_USERNAME"), os.Getenv("PG_PASSWORD"),
+	pgConfig := postgresql.NewConfig(os.Getenv("PG_USERNAME"), os.Getenv("PG_PASSWORD"),
 		os.Getenv("PG_HOST"), os.Getenv("PG_PORT"), os.Getenv("PG_DATABASE"))
 
-	a.logger.Info("pottgresql client initializing")
+	a.logger.Info("postgresql client initializing")
 	postgresqlClient, err := postgresql.NewClient(context.Background(), pgConfig)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	a.logger.Info("users storage initializing")
-	usersStorage := storage.NewUsersPostgres(postgresqlClient, a.logger)
+	usersStorage := db.NewUsersPostgres(postgresqlClient, a.logger)
 	a.logger.Info("changes storage initializing")
-	changesStorage := storage.NewChangesPostgres(postgresqlClient, a.logger)
+	changesStorage := db.NewChangesPostgres(postgresqlClient, a.logger)
+	redisConfig := redis.NewConfig(os.Getenv("REDIS_HOST"), os.Getenv("REDIS_PORT"),
+		os.Getenv("REDIS_PASSWORD"))
+
+	a.logger.Info("redis client initializing")
+	redisClient, err := redis.NewClient(redisConfig)
+	if err != nil {
+		return err
+	}
+
+	a.logger.Info("grades cache initializing")
+	gradesCache := cache.NewGradesRedis(redisClient, a.logger)
 
 	RabbitURL := fmt.Sprintf("amqp://%s:%s@%s:%s/",
 		os.Getenv("RABBIT_USERNAME"), os.Getenv("RABBIT_PASSWORD"),
@@ -55,7 +74,7 @@ func NewApp(cfg *config.Config) (*App, error) {
 	a.logger.Info("rabbitmq producer initializing")
 	producer, err := rabbitmq.NewProducer(RabbitURL)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	a.producer = producer
 
@@ -72,14 +91,33 @@ func NewApp(cfg *config.Config) (*App, error) {
 		a.cfg.RabbitMQ.Producer.TelegramMessages, a.cfg.RabbitMQ.Producer.TelegramMessagesKey)
 
 	a.logger.Info("service initializing")
-	gradesService := service.NewService(cfg, usersStorage, changesStorage, a.logger, a.producer)
+	gradesService := service.NewService(cfg, usersStorage, changesStorage, gradesCache,
+		a.logger, a.producer)
 	a.service = gradesService
 
 	a.logger.Info("grades process strategy initializing")
-	a.gradesStrategy = grades.NewProcessStrategy(gradesService, a.cfg.Responses.Bars.UnavailablePT,
-		a.cfg.Responses.Bars.NotAuthorized, a.cfg.Responses.BotError)
+	a.gradesStrategy = grades.NewProcessStrategy(gradesService, a.cfg.Responses.Bars.NotAuthorized,
+		a.cfg.Responses.BotError, a.cfg.Responses.Bars.PTNotProvided, a.cfg.Responses.Bars.WrongGradesPage)
 
-	return &a, nil
+	a.logger.Info("app launching")
+	a.logger.Info("app: start consume")
+	a.startConsume()
+	a.logger.Info("bars service: receive changes")
+	go a.service.ReceiveChanges()
+	a.logger.Info("app started")
+
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+	<-ctx.Done()
+
+	a.logger.Info("app shutting down")
+	postgresqlClient.Close()
+	if err = redisClient.Close(); err != nil {
+		a.logger.Errorf("redis client failed to close due to error: %v", err)
+	}
+	// TODO close RabbitMQ connections
+
+	return nil
 }
 
 func (a *App) declareAndBindQueue(exchange, queue, key string) {
@@ -126,18 +164,4 @@ func (a *App) initializeConsume(consumer mq.Consumer, queue, exchange, key strin
 	}
 
 	return nil
-}
-
-// Run TODO replace synchronization with wait group (and in other services)
-func (a *App) Run() {
-	a.logger.Info("app launching")
-
-	var wg sync.WaitGroup
-	wg.Add(1)
-
-	a.startConsume()
-
-	go a.service.ReceiveChanges()
-
-	wg.Wait()
 }

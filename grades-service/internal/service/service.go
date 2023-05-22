@@ -26,8 +26,13 @@ var (
 
 const defaultRequestExpiration = "5000"
 
-type changeCreator interface {
+type changesRepository interface {
 	Create(ctx context.Context, c change.Change) error
+}
+
+type gradesCache interface {
+	Set(ctx context.Context, key string, pt *bars.ProgressTable) error
+	Get(ctx context.Context, key string) (*bars.ProgressTable, error)
 }
 
 type userRepository interface {
@@ -39,7 +44,8 @@ type userRepository interface {
 
 type Service struct {
 	usersStorage   userRepository
-	changesStorage changeCreator
+	changesStorage changesRepository
+	gradesCache    gradesCache
 	cfg            *config.Config
 	logger         *logging.Logger
 	producer       mq.Producer
@@ -95,16 +101,14 @@ func (s *Service) ReceiveChanges() {
 }
 
 func (s *Service) GetProgressTableByRequest(ctx context.Context, id int64) (*bars.ProgressTable, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
-	usr, err := s.usersStorage.FindOne(ctx, id)
+	usr, err := s.getUserFromDB(ctx, id)
 	if err != nil {
-		return nil, fmt.Errorf("users repository FindOne: %v", err)
+		return nil, err
 	}
-
-	if usr == nil || usr.Deleted == true {
+	if usr == nil {
 		return nil, nil
 	}
 
@@ -121,25 +125,40 @@ func (s *Service) GetProgressTableByRequest(ctx context.Context, id int64) (*bar
 	if err = s.usersStorage.UpdateProgressTable(ctx, usr.ID, *progressTableParser); err != nil {
 		return nil, err
 	}
+	if err = s.gradesCache.Set(ctx, fmt.Sprint(usr.ID), progressTableParser); err != nil {
+		return nil, err
+	}
 
 	return progressTableParser, nil
 }
 
 func (s *Service) GetProgressTableFromDB(ctx context.Context, id int64) (*bars.ProgressTable, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
-	usr, err := s.usersStorage.FindOne(ctx, id)
+	ptCache, err := s.gradesCache.Get(ctx, fmt.Sprint(id))
 	if err != nil {
-		return nil, fmt.Errorf("users repository FindOne: %v", err)
+		return nil, err
+	}
+	if ptCache != nil {
+		return ptCache, nil
 	}
 
-	if usr == nil || usr.Deleted == true {
-		return nil, nil
+	usr, err := s.getUserFromDB(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if usr != nil {
+		if len(usr.ProgressTable.Tables) != 0 {
+			if err = s.gradesCache.Set(ctx, fmt.Sprint(usr.ID), &usr.ProgressTable); err != nil {
+				return nil, err
+			}
+
+		}
+		return &usr.ProgressTable, nil
 	}
 
-	return &usr.ProgressTable, nil
+	return nil, err
 }
 
 func (s *Service) checkChanges(usr user.User) error {
@@ -156,6 +175,12 @@ func (s *Service) checkChanges(usr user.User) error {
 
 	progressTableParser, err := s.authorizeAndGetProgressTable(ctx, usr.Username, decryptedPassword)
 	if err != nil {
+		if errors.Is(err, bars.ErrWrongGradesPage) {
+			if err2 := s.sendTelegramMessage(usr.ID, s.cfg.Responses.Bars.WrongGradesPage, ""); err2 != nil {
+				return fmt.Errorf("send wrong grades page message to UserID %d: %v", usr.ID, err2)
+			}
+		}
+
 		return s.handleBarsError(ctx, err, usr.ID)
 	}
 
@@ -171,7 +196,7 @@ func (s *Service) checkChanges(usr user.User) error {
 	}
 
 	for _, c := range tableDataChanges {
-		if err = s.sendChangeToTelegram(&c, usr.ID); err != nil {
+		if err = s.sendTelegramMessage(usr.ID, c.String(), "Markdown"); err != nil {
 			s.logger.Errorf("failed to send a change to telegram user (id: %d) due to error: %v", usr.ID, err)
 			continue
 		}
@@ -207,30 +232,35 @@ func (s *Service) authorizeAndGetProgressTable(ctx context.Context, username, pa
 
 func (s *Service) handleBarsError(ctx context.Context, err error, id int64) error {
 	switch err {
+	case bars.ErrWrongGradesPage:
+		if err2 := s.usersStorage.LogoutUser(ctx, id); err2 != nil {
+			s.logger.Errorf("usersStorage: failed to LogoutUser (UserID: %d) in ErrWrongGradesPage case due to error: %v", id, err2)
+			return err2
+		}
 	case bars.ErrNoAuth:
 		if err2 := s.usersStorage.LogoutUser(ctx, id); err2 != nil {
-			return fmt.Errorf("usersStorage (LogoutUser): %v", err)
+			s.logger.Errorf("usersStorage: failed to LogoutUser (UserID: %d) in ErrNoAuth case due to error: %v", id, err2)
+			return err2
 		}
 
-		if err2 := s.sendExpiredDataMessage(id); err2 != nil {
-			return fmt.Errorf("send expired data message to UserID %d: %v", id, err2)
+		if err2 := s.sendTelegramMessage(id, s.cfg.Responses.Bars.ExpiredData, ""); err2 != nil {
+			s.logger.Errorf("failed to send expired data message to UserID %d due to error: %v", id, err2)
+			return err2
 		}
-
-		return nil
 	case ErrIncorrectData:
 		s.logger.Warningf("received incorrect progress table for UserID: %d", id)
-		return nil
 	default:
-		s.logger.Debugf("UserID: %d\n", id)
-		return fmt.Errorf("authorizeAndGetProgressTable: %v", err)
+		s.logger.Errorf("failed to execute BARS client method for UserID: %d due to error: %v", id, err)
 	}
+
+	return err
 }
 
-func (s *Service) sendChangeToTelegram(c *change.Change, id int64) error {
+func (s *Service) sendTelegramMessage(id int64, message string, parsemode string) error {
 	response := model.SendMessageRequest{
 		RequestID: id,
-		Message:   c.String(),
-		ParseMode: "Markdown",
+		Message:   message,
+		ParseMode: parsemode,
 	}
 
 	responseBytes, err := json.Marshal(response)
@@ -242,19 +272,17 @@ func (s *Service) sendChangeToTelegram(c *change.Change, id int64) error {
 		s.cfg.RabbitMQ.Producer.TelegramMessagesKey, defaultRequestExpiration, responseBytes)
 }
 
-func (s *Service) sendExpiredDataMessage(id int64) error {
-	response := model.SendMessageRequest{
-		RequestID: id,
-		Message:   s.cfg.Responses.Bars.ExpiredData,
-	}
-
-	responseBytes, err := json.Marshal(response)
+func (s *Service) getUserFromDB(ctx context.Context, id int64) (*user.User, error) {
+	usr, err := s.usersStorage.FindOne(ctx, id)
 	if err != nil {
-		return fmt.Errorf("json marshal: %v", err)
+		return nil, fmt.Errorf("users repository FindOne: %v", err)
 	}
 
-	return s.producer.Publish(s.cfg.RabbitMQ.Producer.TelegramExchange,
-		s.cfg.RabbitMQ.Producer.TelegramMessagesKey, defaultRequestExpiration, responseBytes)
+	if usr == nil || usr.Deleted == true {
+		return nil, nil
+	}
+
+	return usr, nil
 }
 
 // TODO make it more efficient
@@ -293,11 +321,12 @@ func validateProgressTable(pt *bars.ProgressTable) error {
 	}
 }
 
-func NewService(cfg *config.Config, usersStorage userRepository, changesStorage changeCreator,
-	logger *logging.Logger, producer mq.Producer) *Service {
+func NewService(cfg *config.Config, usersStorage userRepository, changesStorage changesRepository,
+	gradesCache gradesCache, logger *logging.Logger, producer mq.Producer) *Service {
 	return &Service{
 		usersStorage:   usersStorage,
 		changesStorage: changesStorage,
+		gradesCache:    gradesCache,
 		cfg:            cfg,
 		logger:         logger,
 		producer:       producer,

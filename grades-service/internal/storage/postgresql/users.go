@@ -1,4 +1,4 @@
-package storage
+package postgresql
 
 import (
 	"context"
@@ -16,11 +16,11 @@ const (
 )
 
 type usersPostgres struct {
-	client Client
+	client client
 	logger *logging.Logger
 }
 
-func NewUsersPostgres(client Client, logger *logging.Logger) *usersPostgres {
+func NewUsersPostgres(client client, logger *logging.Logger) *usersPostgres {
 	return &usersPostgres{
 		client: client,
 		logger: logger,
