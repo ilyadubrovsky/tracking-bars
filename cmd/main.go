@@ -1,7 +1,16 @@
 package main
 
+import (
+	"log"
+
+	"github.com/ilyadubrovsky/tracking-bars/internal/config"
+)
+
 func main() {
-	// TODO init config
+	_, err := config.NewConfig()
+	if err != nil {
+		log.Fatalf("cant initialize config: %v", err)
+	}
 
 	// TODO init postgresql
 

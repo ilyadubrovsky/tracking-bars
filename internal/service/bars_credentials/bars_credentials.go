@@ -23,7 +23,7 @@ type svc struct {
 	barsClient bars.Client
 }
 
-func NewBars(
+func NewBarsCredentials(
 	barsCredentialsRepo repository.BarsCredentials,
 	cfg *config.Bars,
 ) *svc {

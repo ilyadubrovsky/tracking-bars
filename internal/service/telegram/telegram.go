@@ -14,13 +14,13 @@ type svc struct {
 	bot         *tele.Bot
 	cfg         *config.Telegram
 	userService service.User
-	barsService service.Bars
+	barsService service.BarsCredentials
 }
 
 func NewTelegram(
 	cfg *config.Telegram,
 	userService service.User,
-	barsService service.Bars,
+	barsService service.BarsCredentials,
 ) (*svc, error) {
 	bot, err := createBot(cfg)
 	if err != nil {

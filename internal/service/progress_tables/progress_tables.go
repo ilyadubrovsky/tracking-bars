@@ -1,4 +1,4 @@
-package grade
+package progress_tables
 
 import "github.com/ilyadubrovsky/tracking-bars/internal/repository"
 
