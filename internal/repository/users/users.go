@@ -2,10 +2,12 @@ package users
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/ilyadubrovsky/tracking-bars/internal/database"
 	"github.com/ilyadubrovsky/tracking-bars/internal/domain"
+	"github.com/jackc/pgx/v4"
 )
 
 type repo struct {
@@ -19,12 +21,13 @@ func NewRepository(db database.PG) *repo {
 }
 
 func (r *repo) Save(ctx context.Context, user *domain.User) error {
-	query, vals, err := buildSaveOneQuery(user)
-	if err != nil {
-		return fmt.Errorf("buildSaveOneQuery: %w", err)
-	}
+	query := `
+		INSERT INTO users
+		VALUES ($1)
+		ON CONFLICT (id) DO NOTHING 
+	`
 
-	_, err = r.db.Exec(ctx, query, vals...)
+	_, err := r.db.Exec(ctx, query, user.ID)
 	if err != nil {
 		return fmt.Errorf("db.Exec: %w", err)
 	}
@@ -33,20 +36,22 @@ func (r *repo) Save(ctx context.Context, user *domain.User) error {
 }
 
 func (r *repo) Get(ctx context.Context, userID int64) (*domain.User, error) {
-	return nil, nil
-}
-
-func buildSaveOneQuery(user *domain.User) (string, []interface{}, error) {
 	query := `
-		INSERT INTO users
-		VALUES ($1)
-		ON CONFLICT (id) DO NOTHING 
+	SELECT 
+	    id
+	FROM 
+	    users
+	WHERE id = $1
 	`
 
-	//row, err := dbo.FromDomainToDBO(user)
-	//if err != nil {
-	//	return "", nil, fmt.Errorf("dbo.FromDomainToDBO (user): %w", err)
-	//}
+	user := new(domain.User)
+	err := r.db.QueryRow(ctx, query, userID).Scan(&user.ID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("db.QueryRow: %w", err)
+	}
 
-	return query, []interface{}{user.ID}, nil
+	return user, nil
 }
