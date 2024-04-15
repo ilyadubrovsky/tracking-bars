@@ -5,11 +5,13 @@ import "time"
 type Config struct {
 	Telegram Telegram
 	Bars     Bars
+	Postgres Postgres
 }
 
 type Bars struct {
-	CronDelay          time.Time
-	CronWorkerPoolSize int
+	CronDelay                time.Time
+	CronWorkerPoolSize       int
+	CredentialsEncryptionKey string
 }
 
 type Telegram struct {
@@ -17,8 +19,5 @@ type Telegram struct {
 }
 
 type Postgres struct {
-	Host     string
-	Port     string
-	Username string
-	Password string
+	DSN string
 }
