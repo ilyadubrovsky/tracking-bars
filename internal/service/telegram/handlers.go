@@ -1,4 +1,4 @@
-package service
+package telegram
 
 import (
 	"context"
@@ -31,7 +31,7 @@ func (s *svc) handleCallback(c tele.Context) error {
 }
 
 func (s *svc) handleStartCommand(c tele.Context) error {
-	err := s.userService.Save(
+	err := s.userSvc.Save(
 		context.Background(),
 		&domain.User{
 			ID: c.Sender().ID,
@@ -66,7 +66,7 @@ func (s *svc) handleAuthCommand(c tele.Context) error {
 		return s.SendMessageWithOpts(c.Sender().ID, answers.CredentialsIncorrectly)
 	}
 
-	err := s.barsService.Authorization(context.Background(), &domain.BarsCredentials{
+	err := s.barsCredentialSvc.Authorization(context.Background(), &domain.BarsCredentials{
 		UserID:   c.Sender().ID,
 		Username: username,
 		Password: []byte(password),
@@ -82,7 +82,7 @@ func (s *svc) handleAuthCommand(c tele.Context) error {
 }
 
 func (s *svc) handleLogoutCommand(c tele.Context) error {
-	err := s.barsService.Logout(context.Background(), c.Sender().ID)
+	err := s.barsCredentialSvc.Logout(context.Background(), c.Sender().ID)
 	if err != nil {
 		// TODO error handling and response
 	}

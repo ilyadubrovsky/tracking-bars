@@ -1,4 +1,4 @@
-package service
+package user
 
 import (
 	"context"
@@ -11,7 +11,7 @@ type svc struct {
 	usersRepository repository.Users
 }
 
-func NewUser(
+func NewService(
 	usersRepository repository.Users,
 ) *svc {
 	return &svc{

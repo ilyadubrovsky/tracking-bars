@@ -4,4 +4,6 @@ package service
 type Telegram interface {
 	SendMessageWithOpts(id int64, message string, opts ...interface{}) error
 	EditMessageWithOpts(id int64, messageID int, msg string, opts ...interface{}) error
+	Start()
+	Stop()
 }

@@ -6,6 +6,6 @@ import (
 	"github.com/ilyadubrovsky/tracking-bars/internal/domain"
 )
 
-type Grade interface {
+type ProgressTable interface {
 	Save(ctx context.Context, progressTable *domain.ProgressTable) error
 }

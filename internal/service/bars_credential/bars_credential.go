@@ -1,4 +1,4 @@
-package service
+package bars_credential
 
 import (
 	"context"
@@ -17,15 +17,15 @@ import (
 // нужно сбрасывать клиента через Clear() после использования перед возвращением в пул
 type svc struct {
 	barsCredentialsRepo repository.BarsCredentials
-	cfg                 *config.Bars
+	cfg                 config.Bars
 
 	mu         sync.Mutex
 	barsClient bars.Client
 }
 
-func NewBarsCredentials(
+func NewService(
 	barsCredentialsRepo repository.BarsCredentials,
-	cfg *config.Bars,
+	cfg config.Bars,
 ) *svc {
 	return &svc{
 		barsCredentialsRepo: barsCredentialsRepo,

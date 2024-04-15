@@ -1,4 +1,4 @@
-package service
+package telegram
 
 import (
 	"errors"
@@ -11,16 +11,16 @@ import (
 )
 
 type svc struct {
-	bot         *tele.Bot
-	cfg         *config.Telegram
-	userService service.User
-	barsService service.BarsCredentials
+	userSvc           service.User
+	barsCredentialSvc service.BarsCredential
+	bot               *tele.Bot
+	cfg               config.Telegram
 }
 
-func NewTelegram(
-	cfg *config.Telegram,
-	userService service.User,
-	barsService service.BarsCredentials,
+func NewService(
+	userSvc service.User,
+	barsCredentialSvc service.BarsCredential,
+	cfg config.Telegram,
 ) (*svc, error) {
 	bot, err := createBot(cfg)
 	if err != nil {
@@ -28,10 +28,10 @@ func NewTelegram(
 	}
 
 	s := &svc{
-		bot:         bot,
-		cfg:         cfg,
-		userService: userService,
-		barsService: barsService,
+		userSvc:           userSvc,
+		barsCredentialSvc: barsCredentialSvc,
+		bot:               bot,
+		cfg:               cfg,
 	}
 
 	s.setBotSettings()
@@ -39,7 +39,7 @@ func NewTelegram(
 	return s, nil
 }
 
-func createBot(cfg *config.Telegram) (*tele.Bot, error) {
+func createBot(cfg config.Telegram) (*tele.Bot, error) {
 	pref := tele.Settings{
 		Token:  cfg.BotToken,
 		Poller: &tele.LongPoller{Timeout: cfg.LongPollerDelay},
@@ -123,4 +123,12 @@ func (s *svc) middlewareError(targetUserID int64, err error) error {
 	}
 
 	return err
+}
+
+func (s *svc) Start() {
+	s.bot.Start()
+}
+
+func (s *svc) Stop() {
+	s.bot.Stop()
 }
