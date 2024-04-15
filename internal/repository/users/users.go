@@ -20,3 +20,7 @@ func NewRepository(db database.PG) *repo {
 func (r *repo) Save(ctx context.Context, user *domain.User) error {
 	return nil
 }
+
+func (r *repo) Get(ctx context.Context, userID int64) (*domain.User, error) {
+	return nil, nil
+}
