@@ -5,7 +5,7 @@ CREATE TABLE bars_credentials (
     username TEXT NOT NULL,
     password BYTEA NOT NULL,
     created_at TIMESTAMPTZ NOT NULL,
-    deleted_at TIMESTAMPTZ NOT NULL
+    deleted_at TIMESTAMPTZ NULL
 );
 -- +goose StatementEnd
 
