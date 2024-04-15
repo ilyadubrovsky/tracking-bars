@@ -1,12 +1,12 @@
 version: '3.7'
 
 services:
-  tracking-bars:
-    command: ./tracking-bars
-    depends_on:
-      postgres:
-        condition: service_healthy
-    image: user-service
+  #tracking-bars:
+  #  command: ./tracking-bars
+  #  depends_on:
+  #    postgres:
+  #      condition: service_healthy
+  #  image: tracking-bars
   postgres:
     restart: always
     image: postgres:13.3
@@ -14,7 +14,7 @@ services:
       - "5432:5432"
     environment:
       POSTGRES_HOST: localhost
-      POSTGRES_DB: trackingbars
+      POSTGRES_DB: tracking-bars
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
     healthcheck:
