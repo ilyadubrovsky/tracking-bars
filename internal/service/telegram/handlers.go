@@ -2,6 +2,7 @@ package telegram
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"regexp"
 	"strconv"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/ilyadubrovsky/tracking-bars/internal/domain"
 	"github.com/ilyadubrovsky/tracking-bars/internal/service/telegram/answers"
+	"github.com/ilyadubrovsky/tracking-bars/pkg/bars"
 	tele "gopkg.in/telebot.v3"
 )
 
@@ -72,22 +74,26 @@ func (s *svc) handleAuthCommand(c tele.Context) error {
 		Password: []byte(password),
 	})
 	if err != nil {
-		// TODO bars.ErrWrongPage
-		// TODO error handling and response
-		// ierrors.ErrAlreadyAuth
-		// bars.ErrNoAuth
+		switch {
+		case errors.Is(err, bars.ErrWrongGradesPage):
+			return s.SendMessageWithOpts(c.Sender().ID, answers.GradesPageWrong)
+		case errors.Is(err, bars.ErrNoAuth):
+			return s.SendMessageWithOpts(c.Sender().ID, answers.CredentialsWrong)
+		default:
+			return s.SendMessageWithOpts(c.Sender().ID, answers.BotError)
+		}
 	}
 
-	return nil
+	return s.SendMessageWithOpts(c.Sender().ID, answers.SuccessfulAuthorization)
 }
 
 func (s *svc) handleLogoutCommand(c tele.Context) error {
 	err := s.barsCredentialSvc.Logout(context.Background(), c.Sender().ID)
 	if err != nil {
-		// TODO error handling and response
+		return s.SendMessageWithOpts(c.Sender().ID, answers.BotError)
 	}
 
-	return nil
+	return s.SendMessageWithOpts(c.Sender().ID, answers.SuccessfulLogout)
 }
 
 func (s *svc) handleProgressTableCommand(c tele.Context) error {

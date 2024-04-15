@@ -11,8 +11,11 @@ import (
 	"strings"
 )
 
-// TODO ErrWrongGradesPage
-var ErrNoAuth = errors.New("authorization in BARS has not been completed")
+var (
+	// TODO ErrWrongGradesPage
+	ErrWrongGradesPage = errors.New("wrong grades page")
+	ErrNoAuth          = errors.New("authorization in BARS has not been completed")
+)
 
 type Client interface {
 	Authorization(ctx context.Context, username, password string) error
