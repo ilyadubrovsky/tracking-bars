@@ -10,6 +10,7 @@ import (
 	"github.com/ilyadubrovsky/tracking-bars/internal/repository/progress_tables"
 	"github.com/ilyadubrovsky/tracking-bars/internal/repository/users"
 	"github.com/ilyadubrovsky/tracking-bars/internal/service/bars_credential"
+	"github.com/ilyadubrovsky/tracking-bars/internal/service/grades_changes"
 	"github.com/ilyadubrovsky/tracking-bars/internal/service/progress_table"
 	"github.com/ilyadubrovsky/tracking-bars/internal/service/telegram"
 	"github.com/ilyadubrovsky/tracking-bars/internal/service/user"
@@ -42,8 +43,11 @@ func main() {
 		barsCredentialService,
 		progressTablesRepository,
 	)
-	_ = progressTableService
-	telegramSvc, err := telegram.NewService(
+	gradesChangesService := grades_changes.NewService(
+		progressTableService,
+		cfg.Bars,
+	)
+	telegramService, err := telegram.NewService(
 		userService,
 		barsCredentialService,
 		cfg.Telegram,
@@ -52,7 +56,12 @@ func main() {
 		log.Fatalf("cant initialize telegram service: %v", err)
 	}
 
-	telegramSvc.Start()
+	_, err = gradesChangesService.Start()
+	if err != nil {
+		log.Fatalf("cant start grades changes service: %v", err)
+	}
+
+	telegramService.Start()
 
 	// TODO gracefully shutdown
 }
