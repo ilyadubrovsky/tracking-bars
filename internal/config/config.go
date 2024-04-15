@@ -9,9 +9,9 @@ type Config struct {
 }
 
 type Bars struct {
-	CronDelay                time.Time
-	CronWorkerPoolSize       int
-	CredentialsEncryptionKey string
+	CronDelay          time.Time
+	CronWorkerPoolSize int
+	EncryptionKey      string
 }
 
 type Telegram struct {
