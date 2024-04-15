@@ -13,8 +13,8 @@ import (
 
 var (
 	// TODO ErrWrongGradesPage
-	ErrWrongGradesPage = errors.New("wrong grades page")
-	ErrNoAuth          = errors.New("authorization in BARS has not been completed")
+	ErrWrongGradesPage     = errors.New("wrong grades page")
+	ErrAuthorizationFailed = errors.New("authorization in BARS has not been completed")
 )
 
 type Client interface {
@@ -75,7 +75,7 @@ func (c *client) Authorization(ctx context.Context, username, password string) e
 	defer response.Body.Close()
 
 	if !c.isAuthorized(response) {
-		return ErrNoAuth
+		return ErrAuthorizationFailed
 	}
 
 	return nil

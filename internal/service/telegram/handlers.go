@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/ilyadubrovsky/tracking-bars/internal/domain"
+	ierrors "github.com/ilyadubrovsky/tracking-bars/internal/errors"
 	"github.com/ilyadubrovsky/tracking-bars/internal/service/telegram/answers"
 	"github.com/ilyadubrovsky/tracking-bars/pkg/bars"
 	tele "gopkg.in/telebot.v3"
@@ -73,15 +74,15 @@ func (s *svc) handleAuthCommand(c tele.Context) error {
 		Username: username,
 		Password: []byte(password),
 	})
-	if err != nil {
-		switch {
-		case errors.Is(err, bars.ErrWrongGradesPage):
-			return s.SendMessageWithOpts(c.Sender().ID, answers.GradesPageWrong)
-		case errors.Is(err, bars.ErrNoAuth):
-			return s.SendMessageWithOpts(c.Sender().ID, answers.CredentialsWrong)
-		default:
-			return s.SendMessageWithOpts(c.Sender().ID, answers.BotError)
-		}
+	switch {
+	case errors.Is(err, bars.ErrWrongGradesPage):
+		return s.SendMessageWithOpts(c.Sender().ID, answers.GradesPageWrong)
+	case errors.Is(err, bars.ErrAuthorizationFailed):
+		return s.SendMessageWithOpts(c.Sender().ID, answers.CredentialsWrong)
+	case errors.Is(err, ierrors.ErrAlreadyAuth):
+		return s.SendMessageWithOpts(c.Sender().ID, answers.ClientAlreadyAuthorized)
+	case err != nil:
+		return s.SendMessageWithOpts(c.Sender().ID, answers.BotError)
 	}
 
 	return s.SendMessageWithOpts(c.Sender().ID, answers.SuccessfulAuthorization)
@@ -89,7 +90,10 @@ func (s *svc) handleAuthCommand(c tele.Context) error {
 
 func (s *svc) handleLogoutCommand(c tele.Context) error {
 	err := s.barsCredentialSvc.Logout(context.Background(), c.Sender().ID)
-	if err != nil {
+	switch {
+	case errors.Is(err, ierrors.ErrNotAuthorized):
+		return s.SendMessageWithOpts(c.Sender().ID, answers.ClientNotAuthorized)
+	case err != nil:
 		return s.SendMessageWithOpts(c.Sender().ID, answers.BotError)
 	}
 

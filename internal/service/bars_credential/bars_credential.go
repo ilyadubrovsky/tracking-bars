@@ -71,7 +71,15 @@ func (s *svc) Authorization(ctx context.Context, credentials *domain.BarsCredent
 }
 
 func (s *svc) Logout(ctx context.Context, userID int64) error {
-	err := s.barsCredentialsRepo.Delete(ctx, userID)
+	repoCredentials, err := s.barsCredentialsRepo.Get(ctx, userID)
+	if err != nil {
+		return fmt.Errorf("barsCredentialsRepo.Get: %w", err)
+	}
+	if repoCredentials == nil {
+		return ierrors.ErrNotAuthorized
+	}
+
+	err = s.barsCredentialsRepo.Delete(ctx, userID)
 	if err != nil {
 		return fmt.Errorf("barsCredentialsRepo.Delete: %w", err)
 	}
