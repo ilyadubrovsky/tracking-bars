@@ -39,10 +39,7 @@ func main() {
 		barsCredentialsRepository,
 		cfg.Bars,
 	)
-	progressTableService := progress_table.NewService(
-		barsCredentialService,
-		progressTablesRepository,
-	)
+	progressTableService := progress_table.NewService(progressTablesRepository)
 	telegramService, err := telegram.NewService(
 		userService,
 		barsCredentialService,
