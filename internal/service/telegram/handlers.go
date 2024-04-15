@@ -51,6 +51,7 @@ func (s *svc) handleHelpCommand(c tele.Context) error {
 	return s.SendMessageWithOpts(c.Sender().ID, answers.Help)
 }
 
+// TODO пока не придумал че делать если /start не написал пользователь и не попал в таблицу users(
 func (s *svc) handleAuthCommand(c tele.Context) error {
 	if c.Message().Payload == "" {
 		return s.SendMessageWithOpts(c.Sender().ID, answers.CredentialsNoEntered)
