@@ -56,7 +56,7 @@ func (r *repo) Save(ctx context.Context, progressTable *domain.ProgressTable) er
 	return nil
 }
 
-func (r *repo) GetProgressTable(ctx context.Context, userID int64) (*domain.ProgressTable, error) {
+func (r *repo) GetByUserID(ctx context.Context, userID int64) (*domain.ProgressTable, error) {
 	query := `
 		SELECT 
 		    user_id, 

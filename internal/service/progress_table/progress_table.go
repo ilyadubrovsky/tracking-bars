@@ -28,10 +28,10 @@ func (s *svc) Save(ctx context.Context, progressTable *domain.ProgressTable) err
 	return nil
 }
 
-func (s *svc) GetProgressTable(ctx context.Context, userID int64) (*domain.ProgressTable, error) {
-	progressTable, err := s.progressTablesRepo.GetProgressTable(ctx, userID)
+func (s *svc) GetByUserID(ctx context.Context, userID int64) (*domain.ProgressTable, error) {
+	progressTable, err := s.progressTablesRepo.GetByUserID(ctx, userID)
 	if err != nil {
-		return nil, fmt.Errorf("progressTablesRepo.GetProgressTable: %w", err)
+		return nil, fmt.Errorf("progressTablesRepo.GetByUserID: %w", err)
 	}
 
 	return progressTable, nil

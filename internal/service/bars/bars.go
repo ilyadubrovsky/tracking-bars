@@ -1,4 +1,4 @@
-package bars_credential
+package bars
 
 import (
 	"context"

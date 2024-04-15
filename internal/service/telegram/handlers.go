@@ -70,7 +70,7 @@ func (s *svc) handleAuthCommand(c tele.Context) error {
 		return s.SendMessageWithOpts(c.Sender().ID, config.CredentialsIncorrectly)
 	}
 
-	err := s.barsCredentialSvc.Authorization(context.Background(), &domain.BarsCredentials{
+	err := s.barsSvc.Authorization(context.Background(), &domain.BarsCredentials{
 		UserID:   c.Sender().ID,
 		Username: username,
 		Password: []byte(password),
@@ -90,7 +90,7 @@ func (s *svc) handleAuthCommand(c tele.Context) error {
 }
 
 func (s *svc) handleLogoutCommand(c tele.Context) error {
-	err := s.barsCredentialSvc.Logout(context.Background(), c.Sender().ID)
+	err := s.barsSvc.Logout(context.Background(), c.Sender().ID)
 	if err != nil {
 		return s.SendMessageWithOpts(c.Sender().ID, config.BotError)
 	}

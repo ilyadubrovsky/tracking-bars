@@ -11,15 +11,15 @@ import (
 )
 
 type svc struct {
-	userSvc           service.User
-	barsCredentialSvc service.BarsCredential
-	bot               *tele.Bot
-	cfg               config.Telegram
+	userSvc service.User
+	barsSvc service.Bars
+	bot     *tele.Bot
+	cfg     config.Telegram
 }
 
 func NewService(
 	userSvc service.User,
-	barsCredentialSvc service.BarsCredential,
+	barsSvc service.Bars,
 	cfg config.Telegram,
 ) (*svc, error) {
 	bot, err := createBot(cfg)
@@ -28,10 +28,10 @@ func NewService(
 	}
 
 	s := &svc{
-		userSvc:           userSvc,
-		barsCredentialSvc: barsCredentialSvc,
-		bot:               bot,
-		cfg:               cfg,
+		userSvc: userSvc,
+		barsSvc: barsSvc,
+		bot:     bot,
+		cfg:     cfg,
 	}
 
 	s.setBotSettings()

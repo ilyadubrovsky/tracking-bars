@@ -14,6 +14,7 @@ import (
 	"github.com/ilyadubrovsky/tracking-bars/internal/config"
 	"github.com/ilyadubrovsky/tracking-bars/internal/domain"
 	ierrors "github.com/ilyadubrovsky/tracking-bars/internal/errors"
+	"github.com/ilyadubrovsky/tracking-bars/internal/repository"
 	"github.com/ilyadubrovsky/tracking-bars/internal/service"
 	"github.com/ilyadubrovsky/tracking-bars/pkg/aes"
 	"github.com/ilyadubrovsky/tracking-bars/pkg/bars"
@@ -21,24 +22,27 @@ import (
 )
 
 type svc struct {
-	progressTableSvc  service.ProgressTable
-	barsCredentialSvc service.BarsCredential
-	telegramSvc       service.Telegram
-	cfg               config.Bars
-	stopFunc          func()
+	progressTableSvc    service.ProgressTable
+	telegramSvc         service.Telegram
+	barsSvc             service.Bars
+	barsCredentialsRepo repository.BarsCredentials
+	cfg                 config.Bars
+	stopFunc            func()
 }
 
 func NewService(
 	progressTableSvc service.ProgressTable,
-	barsCredentialSvc service.BarsCredential,
 	telegramSvc service.Telegram,
+	barsSvc service.Bars,
+	barsCredentialsRepo repository.BarsCredentials,
 	cfg config.Bars,
 ) *svc {
 	return &svc{
-		progressTableSvc:  progressTableSvc,
-		barsCredentialSvc: barsCredentialSvc,
-		telegramSvc:       telegramSvc,
-		cfg:               cfg,
+		progressTableSvc:    progressTableSvc,
+		telegramSvc:         telegramSvc,
+		barsSvc:             barsSvc,
+		barsCredentialsRepo: barsCredentialsRepo,
+		cfg:                 cfg,
 	}
 }
 
@@ -67,7 +71,7 @@ func (s *svc) sendActualCredentials(
 	ctx context.Context,
 	credentialsChan chan<- *domain.BarsCredentials,
 ) {
-	barsCredentials, err := s.barsCredentialSvc.GetAllAuthorized(ctx)
+	barsCredentials, err := s.barsCredentialsRepo.GetAllAuthorized(ctx)
 	if err != nil {
 		// TODO logging
 		return
@@ -111,9 +115,9 @@ func (s *svc) checkChanges(
 			return fmt.Errorf("telegramSvc.SendMessageWithOpts(credentialsExpired): %w", err)
 		}
 
-		deleteErr := s.barsCredentialSvc.Logout(ctx, credentials.UserID)
+		deleteErr := s.barsSvc.Logout(ctx, credentials.UserID)
 		if deleteErr != nil {
-			return fmt.Errorf("barsCredentialSvc.Logout(authFailed): %w", err)
+			return fmt.Errorf("barsSvc.Logout(authFailed): %w", err)
 		}
 
 		return nil
@@ -124,9 +128,9 @@ func (s *svc) checkChanges(
 			return fmt.Errorf("telegramSvc.SendMessageWithOpts(gradesPageWrong): %w", err)
 		}
 
-		deleteErr := s.barsCredentialSvc.Logout(ctx, credentials.UserID)
+		deleteErr := s.barsSvc.Logout(ctx, credentials.UserID)
 		if deleteErr != nil {
-			return fmt.Errorf("barsCredentialSvc.Delete(wrongGradesPage): %w", err)
+			return fmt.Errorf("barsSvc.Delete(wrongGradesPage): %w", err)
 		}
 
 		return nil
@@ -141,9 +145,9 @@ func (s *svc) checkChanges(
 	}
 	progressTable.UserID = credentials.UserID
 
-	oldProgressTable, err := s.progressTableSvc.GetProgressTable(ctx, credentials.UserID)
+	oldProgressTable, err := s.progressTableSvc.GetByUserID(ctx, credentials.UserID)
 	if err != nil {
-		return fmt.Errorf("progressTableSvc.GetProgressTable: %w", err)
+		return fmt.Errorf("progressTableSvc.GetByUserID: %w", err)
 	}
 
 	if oldProgressTable != nil {

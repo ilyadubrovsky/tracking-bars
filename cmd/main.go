@@ -9,7 +9,7 @@ import (
 	"github.com/ilyadubrovsky/tracking-bars/internal/repository/bars_credentials"
 	"github.com/ilyadubrovsky/tracking-bars/internal/repository/progress_tables"
 	"github.com/ilyadubrovsky/tracking-bars/internal/repository/users"
-	"github.com/ilyadubrovsky/tracking-bars/internal/service/bars_credential"
+	"github.com/ilyadubrovsky/tracking-bars/internal/service/bars"
 	"github.com/ilyadubrovsky/tracking-bars/internal/service/grades_changes"
 	"github.com/ilyadubrovsky/tracking-bars/internal/service/progress_table"
 	"github.com/ilyadubrovsky/tracking-bars/internal/service/telegram"
@@ -35,20 +35,21 @@ func main() {
 
 	userService := user.NewService(usersRepository)
 	progressTableService := progress_table.NewService(progressTablesRepository)
-	barsCredentialService := bars_credential.NewService(
+	barsService := bars.NewService(
 		progressTableService,
 		barsCredentialsRepository,
 		cfg.Bars,
 	)
 	telegramService, err := telegram.NewService(
 		userService,
-		barsCredentialService,
+		barsService,
 		cfg.Telegram,
 	)
 	gradesChangesService := grades_changes.NewService(
 		progressTableService,
-		barsCredentialService,
 		telegramService,
+		barsService,
+		barsCredentialsRepository,
 		cfg.Bars,
 	)
 	if err != nil {
