@@ -17,6 +17,7 @@ type Bars struct {
 type Telegram struct {
 	BotToken        string
 	LongPollerDelay time.Duration
+	AdminID         int64
 }
 
 type Postgres struct {
