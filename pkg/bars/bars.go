@@ -12,8 +12,6 @@ import (
 )
 
 var (
-	// TODO ErrWrongGradesPage
-	ErrWrongGradesPage     = errors.New("wrong grades page")
 	ErrAuthorizationFailed = errors.New("authorization in BARS has not been completed")
 )
 

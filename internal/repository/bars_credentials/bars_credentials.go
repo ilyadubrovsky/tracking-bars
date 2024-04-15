@@ -93,12 +93,11 @@ func (r *repo) Delete(ctx context.Context, userID int64) error {
 	query := `
 		UPDATE bars_credentials
 		SET 
-		    password = $2,
-			deleted_at = $3
+			deleted_at = $2
 		WHERE user_id = $1
 	`
 
-	_, err := r.db.Exec(ctx, query, userID, []byte{}, time.Now())
+	_, err := r.db.Exec(ctx, query, userID, time.Now())
 	if err != nil {
 		return fmt.Errorf("db.Exec: %w", err)
 	}

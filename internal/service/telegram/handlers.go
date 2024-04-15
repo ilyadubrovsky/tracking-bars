@@ -76,7 +76,7 @@ func (s *svc) handleAuthCommand(c tele.Context) error {
 		Password: []byte(password),
 	})
 	switch {
-	case errors.Is(err, bars.ErrWrongGradesPage):
+	case errors.Is(err, ierrors.ErrWrongGradesPage):
 		return s.SendMessageWithOpts(c.Sender().ID, config.GradesPageWrong)
 	case errors.Is(err, bars.ErrAuthorizationFailed):
 		return s.SendMessageWithOpts(c.Sender().ID, config.CredentialsWrong)

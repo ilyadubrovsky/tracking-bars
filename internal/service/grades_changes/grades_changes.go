@@ -104,7 +104,7 @@ func (s *svc) checkChanges(
 		return fmt.Errorf("aes.Decrypt: %w", err)
 	}
 
-	document, err := getProgressTableDocument(ctx, barsClient, credentials.Username, decryptedPassword)
+	document, err := getGradesPageDocument(ctx, barsClient, credentials.Username, decryptedPassword)
 	if errors.Is(err, bars.ErrAuthorizationFailed) {
 		sendMsgErr := s.telegramSvc.SendMessageWithOpts(credentials.UserID, config.CredentialsExpired)
 		if sendMsgErr != nil {
@@ -113,21 +113,26 @@ func (s *svc) checkChanges(
 
 		deleteErr := s.barsCredentialSvc.Logout(ctx, credentials.UserID)
 		if deleteErr != nil {
-			return fmt.Errorf("barsCredentialSvc.Delete: %w", err)
+			return fmt.Errorf("barsCredentialSvc.Logout(authFailed): %w", err)
 		}
 
 		return nil
 	}
-	if errors.Is(err, bars.ErrWrongGradesPage) {
+	if errors.Is(err, ierrors.ErrWrongGradesPage) {
 		sendMsgErr := s.telegramSvc.SendMessageWithOpts(credentials.UserID, config.GradesPageWrong)
 		if sendMsgErr != nil {
 			return fmt.Errorf("telegramSvc.SendMessageWithOpts(gradesPageWrong): %w", err)
 		}
 
+		deleteErr := s.barsCredentialSvc.Logout(ctx, credentials.UserID)
+		if deleteErr != nil {
+			return fmt.Errorf("barsCredentialSvc.Delete(wrongGradesPage): %w", err)
+		}
+
 		return nil
 	}
 	if err != nil {
-		return fmt.Errorf("getProgressTableDocument: %w", err)
+		return fmt.Errorf("getGradesPageDocument: %w", err)
 	}
 
 	progressTable, err := extractProgressTable(document)
@@ -182,7 +187,7 @@ func (s *svc) Stop() error {
 	return nil
 }
 
-func getProgressTableDocument(
+func getGradesPageDocument(
 	ctx context.Context,
 	barsClient bars.Client,
 	username string,
@@ -206,10 +211,22 @@ func getProgressTableDocument(
 		return nil, fmt.Errorf("goquery.NewDocumentFromReader: %w", err)
 	}
 
+	if !isGradePage(document) {
+		return nil, ierrors.ErrWrongGradesPage
+	}
+
 	return document, nil
 }
 
+func isGradePage(document *goquery.Document) bool {
+	return document.Find("div#div-Student_SemesterSheet__Mark").Length() != 0
+}
+
 func extractProgressTable(document *goquery.Document) (*domain.ProgressTable, error) {
+	if !isGradePage(document) {
+		return nil, ierrors.ErrWrongGradesPage
+	}
+
 	disciplinesCount := document.Find("tbody").Length()
 	progressTable := &domain.ProgressTable{
 		Disciplines: make([]domain.Discipline, 0, disciplinesCount),
