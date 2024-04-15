@@ -6,7 +6,6 @@ CREATE TABLE progress_tables (
     progress_table JSONB NOT NULL,
     created_at TIMESTAMPTZ NOT NULL,
     updated_at TIMESTAMPTZ NOT NULL,
-    deleted_at TIMESTAMPTZ NULL
 );
 -- +goose StatementEnd
 
