@@ -17,7 +17,7 @@ import (
 // TODO здесь должнен быть пул клиентов, реализация с мьютексом медленная
 // нужно сбрасывать клиента через Clear() после использования перед возвращением в пул
 type svc struct {
-	userSvc             service.User
+	progressTableSvc    service.ProgressTable
 	barsCredentialsRepo repository.BarsCredentials
 	cfg                 config.Bars
 
@@ -26,13 +26,13 @@ type svc struct {
 }
 
 func NewService(
-	userSvc service.User,
+	progressTableSvc service.ProgressTable,
 	barsCredentialsRepo repository.BarsCredentials,
 	cfg config.Bars,
 ) *svc {
 	return &svc{
-		userSvc:             userSvc,
 		barsCredentialsRepo: barsCredentialsRepo,
+		progressTableSvc:    progressTableSvc,
 		cfg:                 cfg,
 		barsClient:          bars.NewClient(config.BARSRegistrationPageURL),
 	}
@@ -79,6 +79,11 @@ func (s *svc) Logout(ctx context.Context, userID int64) error {
 		return ierrors.ErrNotAuthorized
 	}
 
+	err = s.progressTableSvc.Delete(ctx, userID)
+	if err != nil {
+		return fmt.Errorf("progressTableSvc.Delete: %w", err)
+	}
+
 	err = s.barsCredentialsRepo.Delete(ctx, userID)
 	if err != nil {
 		return fmt.Errorf("barsCredentialsRepo.Delete: %w", err)
@@ -97,7 +102,12 @@ func (s *svc) GetAllAuthorized(ctx context.Context) ([]*domain.BarsCredentials, 
 }
 
 func (s *svc) Delete(ctx context.Context, userID int64) error {
-	err := s.barsCredentialsRepo.Delete(ctx, userID)
+	err := s.progressTableSvc.Delete(ctx, userID)
+	if err != nil {
+		return fmt.Errorf("progressTableSvc.Delete: %w", err)
+	}
+
+	err = s.barsCredentialsRepo.Delete(ctx, userID)
 	if err != nil {
 		return fmt.Errorf("barsCredentialsRepo.Delete: %w", err)
 	}

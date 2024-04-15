@@ -36,3 +36,11 @@ func (s *svc) GetProgressTable(ctx context.Context, userID int64) (*domain.Progr
 
 	return progressTable, nil
 }
+
+func (s *svc) Delete(ctx context.Context, userID int64) error {
+	if err := s.progressTablesRepo.Delete(ctx, userID); err != nil {
+		return fmt.Errorf("progressTablesRepo.Delete: %w", err)
+	}
+
+	return nil
+}

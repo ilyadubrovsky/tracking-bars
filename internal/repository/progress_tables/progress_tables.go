@@ -89,3 +89,17 @@ func (r *repo) GetProgressTable(ctx context.Context, userID int64) (*domain.Prog
 
 	return progressTable, nil
 }
+
+func (r *repo) Delete(ctx context.Context, userID int64) error {
+	query := `
+		DELETE FROM progress_tables 
+		WHERE user_id = $1
+	`
+
+	_, err := r.db.Exec(ctx, query, userID)
+	if err != nil {
+		return fmt.Errorf("db.Exec: %w", err)
+	}
+
+	return nil
+}
