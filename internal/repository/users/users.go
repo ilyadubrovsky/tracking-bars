@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/ilyadubrovsky/tracking-bars/internal/database"
 	"github.com/ilyadubrovsky/tracking-bars/internal/domain"
@@ -22,12 +23,15 @@ func NewRepository(db database.PG) *repo {
 
 func (r *repo) Save(ctx context.Context, user *domain.User) error {
 	query := `
-		INSERT INTO users
-		VALUES ($1)
+		INSERT INTO users (
+			id,
+		    created_at
+		)
+		VALUES ($1, $2)
 		ON CONFLICT (id) DO NOTHING 
 	`
 
-	_, err := r.db.Exec(ctx, query, user.ID)
+	_, err := r.db.Exec(ctx, query, user.ID, time.Now())
 	if err != nil {
 		return fmt.Errorf("db.Exec: %w", err)
 	}
