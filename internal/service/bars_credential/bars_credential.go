@@ -87,6 +87,20 @@ func (s *svc) Logout(ctx context.Context, userID int64) error {
 	return nil
 }
 
-func (s *svc) GetAll(ctx context.Context) ([]*domain.BarsCredentials, error) {
-	return nil, nil
+func (s *svc) GetAllAuthorized(ctx context.Context) ([]*domain.BarsCredentials, error) {
+	barsCredentials, err := s.barsCredentialsRepo.GetAllAuthorized(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("barsCredentialsRepo.GetAllAuthorized: %w", err)
+	}
+
+	return barsCredentials, nil
+}
+
+func (s *svc) Delete(ctx context.Context, userID int64) error {
+	err := s.barsCredentialsRepo.Delete(ctx, userID)
+	if err != nil {
+		return fmt.Errorf("barsCredentialsRepo.Delete: %w", err)
+	}
+
+	return nil
 }

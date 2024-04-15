@@ -67,7 +67,7 @@ func (s *svc) sendActualCredentials(
 	ctx context.Context,
 	credentialsChan chan<- *domain.BarsCredentials,
 ) {
-	barsCredentials, err := s.barsCredentialSvc.GetAll(ctx)
+	barsCredentials, err := s.barsCredentialSvc.GetAllAuthorized(ctx)
 	if err != nil {
 		// TODO logging
 		return
@@ -81,7 +81,7 @@ func (s *svc) sendActualCredentials(
 func (s *svc) checkChangesWorker(credentialsChan <-chan *domain.BarsCredentials) {
 	barsClient := bars.NewClient(config.BARSRegistrationPageURL)
 	for credentials := range credentialsChan {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 
 		err := s.checkChanges(ctx, barsClient, credentials)
 		if err != nil {
@@ -104,6 +104,27 @@ func (s *svc) checkChanges(
 	}
 
 	document, err := getProgressTableDocument(ctx, barsClient, credentials.Username, decryptedPassword)
+	if errors.Is(err, bars.ErrAuthorizationFailed) {
+		sendMsgErr := s.telegramSvc.SendMessageWithOpts(credentials.UserID, config.CredentialsExpired)
+		if sendMsgErr != nil {
+			return fmt.Errorf("telegramSvc.SendMessageWithOpts(credentialsExpired): %w", err)
+		}
+
+		deleteErr := s.barsCredentialSvc.Delete(ctx, credentials.UserID)
+		if deleteErr != nil {
+			return fmt.Errorf("barsCredentialSvc.Delete: %w", err)
+		}
+
+		return nil
+	}
+	if errors.Is(err, bars.ErrWrongGradesPage) {
+		sendMsgErr := s.telegramSvc.SendMessageWithOpts(credentials.UserID, config.GradesPageWrong)
+		if sendMsgErr != nil {
+			return fmt.Errorf("telegramSvc.SendMessageWithOpts(gradesPageWrong): %w", err)
+		}
+
+		return nil
+	}
 	if err != nil {
 		return fmt.Errorf("getProgressTableDocument: %w", err)
 	}
@@ -121,24 +142,25 @@ func (s *svc) checkChanges(
 
 	if oldProgressTable != nil {
 		changes, err := compareProgressTables(progressTable, oldProgressTable)
-		if err != nil {
+		if err != nil && !errors.Is(err, ierrors.ErrProgressTableStructChanged) {
 			return fmt.Errorf("compareProgressTables: %w", err)
 		}
-		if len(changes) == 0 {
+		if len(changes) == 0 && !errors.Is(err, ierrors.ErrProgressTableStructChanged) {
 			return nil
 		}
 
-		// TODO с ModeMarkdown нужн что-то сделать(
 		for _, change := range changes {
-			err = s.telegramSvc.SendMessageWithOpts(
+			sendMsgErr := s.telegramSvc.SendMessageWithOpts(
 				credentials.UserID,
 				change.String(),
+				// TODO от зависимости телебота нужно избавиться
 				telebot.ModeMarkdown,
 			)
-			if err != nil {
+			if sendMsgErr != nil {
 				// TODO logging with PARAMS
 				// TODO ретраи можно сделать, чтобы не терять изменения
 				// или прихранивать их где-то
+				continue
 			}
 		}
 	}
@@ -165,11 +187,14 @@ func getProgressTableDocument(
 	username string,
 	password string,
 ) (*goquery.Document, error) {
+	// TODO здесь может не всегда проходить авторизация сразу
+	// т.к. сервер барса может падать, нужно предусмотреть систему ретраев перед удалением кредов
 	err := barsClient.Authorization(ctx, username, password)
 	if err != nil {
 		return nil, fmt.Errorf("barsClient.Authorization: %w", err)
 	}
 
+	// TODO аналогично тут ретраи хотелось бы сделать
 	response, err := barsClient.MakeRequest(ctx, http.MethodGet, config.BARSGradesPageURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("barsClient.MakeRequest: %w", err)
@@ -214,6 +239,7 @@ func extractDisciplineNames(document *goquery.Document, pt *domain.ProgressTable
 		End().
 		EachWithBreak(func(nameId int, name *goquery.Selection) bool {
 			processedName := regexp.MustCompile("\\s+").ReplaceAllString(name.Text(), " ")
+			processedName = strings.TrimSuffix(processedName, " ")
 			if strings.HasPrefix(processedName, " ") {
 				processedName = strings.Replace(processedName, " ", "", 1)
 			}
@@ -255,6 +281,7 @@ func extractDisciplinesData(
 			tdSelection := tr.Find("td")
 			tdSelection.EachWithBreak(func(tdId int, td *goquery.Selection) bool {
 				processedData := regexp.MustCompile("\\s+").ReplaceAllString(td.Text(), " ")
+				processedData = strings.TrimSuffix(processedData, " ")
 
 				switch tdId {
 				case 0:
@@ -268,7 +295,7 @@ func extractDisciplinesData(
 					}
 					controlEvent.Name = processedData
 				case tdSelection.Length() - 1:
-					if processedData == " " {
+					if isEmptyData(processedData) {
 						processedData = "отсутствует"
 					} else if strings.HasPrefix(processedData, " ") {
 						processedData = strings.Replace(processedData, " ", "", 1)

@@ -16,8 +16,8 @@ func (pt *ProgressTable) String() string {
 }
 
 type Discipline struct {
-	Name          string         `json:"name"`
-	ControlEvents []ControlEvent `json:"control_events"`
+	Name          string
+	ControlEvents []ControlEvent
 }
 
 // TODO это явно не логика для домеина, нужно переделать
@@ -30,8 +30,8 @@ func (d *Discipline) String() string {
 }
 
 type ControlEvent struct {
-	Name  string `json:"name"`
-	Grade string `json:"grade"`
+	Name  string
+	Grade string
 }
 
 func (ce *ControlEvent) String() string {

@@ -8,9 +8,9 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/ilyadubrovsky/tracking-bars/internal/config"
 	"github.com/ilyadubrovsky/tracking-bars/internal/domain"
 	ierrors "github.com/ilyadubrovsky/tracking-bars/internal/errors"
-	"github.com/ilyadubrovsky/tracking-bars/internal/service/telegram/answers"
 	"github.com/ilyadubrovsky/tracking-bars/pkg/bars"
 	tele "gopkg.in/telebot.v3"
 )
@@ -18,7 +18,7 @@ import (
 func (s *svc) handleCallback(c tele.Context) error {
 	callbackData := strings.Replace(c.Callback().Data, "\f", "", -1)
 	if callbackData[:2] != "pt" {
-		return s.EditMessageWithOpts(c.Sender().ID, c.Message().ID, answers.BotError)
+		return s.EditMessageWithOpts(c.Sender().ID, c.Message().ID, config.BotError)
 	}
 
 	// TODO bars get grades request
@@ -41,33 +41,33 @@ func (s *svc) handleStartCommand(c tele.Context) error {
 		},
 	)
 	if err != nil {
-		return s.SendMessageWithOpts(c.Sender().ID, answers.StartError)
+		return s.SendMessageWithOpts(c.Sender().ID, config.StartError)
 	}
 
-	return s.SendMessageWithOpts(c.Sender().ID, answers.Start)
+	return s.SendMessageWithOpts(c.Sender().ID, config.Start)
 }
 
 func (s *svc) handleHelpCommand(c tele.Context) error {
-	return s.SendMessageWithOpts(c.Sender().ID, answers.Help)
+	return s.SendMessageWithOpts(c.Sender().ID, config.Help)
 }
 
 // TODO пока не придумал че делать если /start не написал пользователь и не попал в таблицу users(
 func (s *svc) handleAuthCommand(c tele.Context) error {
 	if c.Message().Payload == "" {
-		return s.SendMessageWithOpts(c.Sender().ID, answers.CredentialsNoEntered)
+		return s.SendMessageWithOpts(c.Sender().ID, config.CredentialsNoEntered)
 	}
 
 	userCredentials := strings.Split(c.Message().Payload, " ")
 
 	if len(userCredentials) != 2 {
-		return s.SendMessageWithOpts(c.Sender().ID, answers.CredentialsFormIgnored)
+		return s.SendMessageWithOpts(c.Sender().ID, config.CredentialsFormIgnored)
 	}
 
 	username := userCredentials[0]
 	password := userCredentials[1]
 
 	if !isValidUserData(username) {
-		return s.SendMessageWithOpts(c.Sender().ID, answers.CredentialsIncorrectly)
+		return s.SendMessageWithOpts(c.Sender().ID, config.CredentialsIncorrectly)
 	}
 
 	err := s.barsCredentialSvc.Authorization(context.Background(), &domain.BarsCredentials{
@@ -77,28 +77,28 @@ func (s *svc) handleAuthCommand(c tele.Context) error {
 	})
 	switch {
 	case errors.Is(err, bars.ErrWrongGradesPage):
-		return s.SendMessageWithOpts(c.Sender().ID, answers.GradesPageWrong)
+		return s.SendMessageWithOpts(c.Sender().ID, config.GradesPageWrong)
 	case errors.Is(err, bars.ErrAuthorizationFailed):
-		return s.SendMessageWithOpts(c.Sender().ID, answers.CredentialsWrong)
+		return s.SendMessageWithOpts(c.Sender().ID, config.CredentialsWrong)
 	case errors.Is(err, ierrors.ErrAlreadyAuth):
-		return s.SendMessageWithOpts(c.Sender().ID, answers.ClientAlreadyAuthorized)
+		return s.SendMessageWithOpts(c.Sender().ID, config.ClientAlreadyAuthorized)
 	case err != nil:
-		return s.SendMessageWithOpts(c.Sender().ID, answers.BotError)
+		return s.SendMessageWithOpts(c.Sender().ID, config.BotError)
 	}
 
-	return s.SendMessageWithOpts(c.Sender().ID, answers.SuccessfulAuthorization)
+	return s.SendMessageWithOpts(c.Sender().ID, config.SuccessfulAuthorization)
 }
 
 func (s *svc) handleLogoutCommand(c tele.Context) error {
 	err := s.barsCredentialSvc.Logout(context.Background(), c.Sender().ID)
 	switch {
 	case errors.Is(err, ierrors.ErrNotAuthorized):
-		return s.SendMessageWithOpts(c.Sender().ID, answers.ClientNotAuthorized)
+		return s.SendMessageWithOpts(c.Sender().ID, config.ClientNotAuthorized)
 	case err != nil:
-		return s.SendMessageWithOpts(c.Sender().ID, answers.BotError)
+		return s.SendMessageWithOpts(c.Sender().ID, config.BotError)
 	}
 
-	return s.SendMessageWithOpts(c.Sender().ID, answers.SuccessfulLogout)
+	return s.SendMessageWithOpts(c.Sender().ID, config.SuccessfulLogout)
 }
 
 func (s *svc) handleProgressTableCommand(c tele.Context) error {
@@ -112,11 +112,11 @@ func (s *svc) handleProgressTableCommand(c tele.Context) error {
 }
 
 func (s *svc) handleGithubCommand(c tele.Context) error {
-	return s.SendMessageWithOpts(c.Sender().ID, answers.Github, tele.ModeMarkdown)
+	return s.SendMessageWithOpts(c.Sender().ID, config.Github, tele.ModeMarkdown)
 }
 
 func (s *svc) handleText(c tele.Context) error {
-	return s.SendMessageWithOpts(c.Sender().ID, answers.Default)
+	return s.SendMessageWithOpts(c.Sender().ID, config.Default)
 }
 
 func (s *svc) handleAdminEchoCommand(c tele.Context) error {
@@ -127,18 +127,18 @@ func (s *svc) handleAdminEchoCommand(c tele.Context) error {
 }
 
 func (s *svc) handleFixGradesCommand(c tele.Context) error {
-	return s.SendMessageWithOpts(c.Sender().ID, answers.FixGrades, tele.ModeMarkdown)
+	return s.SendMessageWithOpts(c.Sender().ID, config.FixGrades, tele.ModeMarkdown)
 }
 
 func (s *svc) handleAdminSendMessageCommand(c tele.Context) error {
 	msg := strings.Split(c.Message().Text, " ")
 	if len(msg) < 3 {
-		return s.SendMessageWithOpts(c.Sender().ID, answers.BotError)
+		return s.SendMessageWithOpts(c.Sender().ID, config.BotError)
 	}
 
 	userID, err := strconv.Atoi(msg[1])
 	if err != nil {
-		return s.SendMessageWithOpts(c.Sender().ID, answers.BotError)
+		return s.SendMessageWithOpts(c.Sender().ID, config.BotError)
 	}
 
 	text := strings.Join(msg[2:], " ")

@@ -15,10 +15,19 @@ type BarsCredentials struct {
 	DeletedAt *time.Time
 }
 
-func (b *BarsCredentials) ToDomain() *domain.BarsCredentials {
+func ToDomain(dbo *BarsCredentials) *domain.BarsCredentials {
 	return &domain.BarsCredentials{
-		UserID:   b.UserID,
-		Username: b.Username,
-		Password: b.Password,
+		UserID:   dbo.UserID,
+		Username: dbo.Username,
+		Password: dbo.Password,
 	}
+}
+
+func ManyToDomain(dbos []*BarsCredentials) []*domain.BarsCredentials {
+	domains := make([]*domain.BarsCredentials, 0, len(dbos))
+	for _, dbo := range dbos {
+		domains = append(domains, ToDomain(dbo))
+	}
+
+	return domains
 }

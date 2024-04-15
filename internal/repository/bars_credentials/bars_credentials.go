@@ -70,23 +70,23 @@ func (r *repo) Get(ctx context.Context, userID int64) (*domain.BarsCredentials, 
 		WHERE user_id = $1
 	`
 
-	dboCredentials := new(dbo.BarsCredentials)
+	dboCredential := new(dbo.BarsCredentials)
 	err := r.db.QueryRow(ctx, query, userID).Scan(
-		&dboCredentials.UserID,
-		&dboCredentials.Username,
-		&dboCredentials.Password,
-		&dboCredentials.CreatedAt,
-		&dboCredentials.UpdatedAt,
-		&dboCredentials.DeletedAt,
+		&dboCredential.UserID,
+		&dboCredential.Username,
+		&dboCredential.Password,
+		&dboCredential.CreatedAt,
+		&dboCredential.UpdatedAt,
+		&dboCredential.DeletedAt,
 	)
-	if errors.Is(err, pgx.ErrNoRows) || dboCredentials.DeletedAt != nil {
+	if errors.Is(err, pgx.ErrNoRows) || dboCredential.DeletedAt != nil {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, fmt.Errorf("db.QueryRow.Scan: %w", err)
 	}
 
-	return dboCredentials.ToDomain(), nil
+	return dbo.ToDomain(dboCredential), nil
 }
 
 func (r *repo) Delete(ctx context.Context, userID int64) error {
@@ -104,4 +104,47 @@ func (r *repo) Delete(ctx context.Context, userID int64) error {
 	}
 
 	return nil
+}
+
+// TODO нужно один метод с обогащением опциями, нужно объединить это с Get
+func (r *repo) GetAllAuthorized(ctx context.Context) ([]*domain.BarsCredentials, error) {
+	query := `
+		SELECT 
+			user_id, 
+			username, 
+			password, 
+			created_at,
+			updated_at,
+			deleted_at
+		FROM
+		    bars_credentials
+		WHERE deleted_at IS NULL
+	`
+
+	rows, err := r.db.Query(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("db.Query: %w", err)
+	}
+	defer func() {
+		rows.Close()
+	}()
+
+	dboCredentials := make([]*dbo.BarsCredentials, 0)
+	for rows.Next() {
+		dboCredential := new(dbo.BarsCredentials)
+		err = rows.Scan(
+			&dboCredential.UserID,
+			&dboCredential.Username,
+			&dboCredential.Password,
+			&dboCredential.CreatedAt,
+			&dboCredential.UpdatedAt,
+			&dboCredential.DeletedAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("rows.Scan: %w", err)
+		}
+		dboCredentials = append(dboCredentials, dboCredential)
+	}
+
+	return dbo.ManyToDomain(dboCredentials), nil
 }

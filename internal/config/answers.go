@@ -1,4 +1,4 @@
-package answers
+package config
 
 const (
 	Start = "Привет! Бот позволяет взаимодействовать с БАРС в телеграм." +
