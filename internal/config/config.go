@@ -35,7 +35,7 @@ type Bars struct {
 }
 
 type Telegram struct {
-	BotToken        string        `env:"TELEGRAM_BOT_TOKEN" env-default:"default_token"`
+	BotToken        string        `env:"TELEGRAM_BOT_TOKEN"`
 	LongPollerDelay time.Duration `env:"TELEGRAM_LONG_POLLER_DELAY" env-default:"60s"`
 	AdminID         int64         `env:"TELEGRAM_ADMIN_ID"`
 }
