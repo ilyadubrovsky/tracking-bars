@@ -1,82 +1,24 @@
-version: '3.3'
+version: '3.7'
 
 services:
-  user-service:
-    build: ./user-service
-    command: ./user-service
+  tracking-bars:
+    command: ./tracking-bars
     depends_on:
-      rabbitmq:
+      postgres:
         condition: service_healthy
-      db:
-        condition: service_healthy
-    volumes:
-      - ./logs/user-service:/go/src/logs
     image: user-service
-  grades-service:
-    build: ./grades-service
-    command: ./grades-service
-    depends_on:
-      rabbitmq:
-        condition: service_healthy
-      db:
-        condition: service_healthy
-      cache:
-        condition: service_healthy
-    volumes:
-      - ./logs/grades-service:/go/src/logs
-    image: grades-service
-  telegram-service:
-    build: ./telegram-service
-    command: ./telegram-service
-    depends_on:
-      rabbitmq:
-        condition: service_healthy
-      db:
-        condition: service_healthy
-    volumes:
-      - ./logs/telegram-service:/go/src/logs
-    image: telegram-service
-  db:
+  postgres:
     restart: always
     image: postgres:13.3
-    volumes:
-      - ./.database/postgres/data:/var/lib/postgresql/data
     ports:
-      - "5433:5432"
+      - "5432:5432"
     environment:
-      - POSTGRES_HOST=localhost
-      - POSTGRES_DB=trackingbars
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=12345678
+      POSTGRES_HOST: localhost
+      POSTGRES_DB: trackingbars
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
     healthcheck:
       test: ["CMD", "pg_isready"]
       interval: 5s
       timeout: 5s
-      retries: 5
-  cache:
-    restart: always
-    image: redis:7.2-rc-alpine
-    command: redis-server --requirepass 12345678
-    ports:
-      - "6379:6379"
-    healthcheck:
-      test: [ "CMD", "redis-cli", "ping" ]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-  rabbitmq:
-    restart: always
-    image: rabbitmq:3.11-management
-    volumes:
-      - ./.rabbitmq:/var/lib/
-    ports:
-      - "15672:15672"
-    environment:
-      - RABBITMQ_DEFAULT_USER=guest
-      - RABBITMQ_DEFAULT_PASS=guest
-      - RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS=-rabbit disk_free_limit 536870912
-    healthcheck:
-      test: [ "CMD", "rabbitmqctl", "status" ]
-      interval: 30s
-      timeout: 10s
       retries: 5
