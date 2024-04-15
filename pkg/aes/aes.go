@@ -6,7 +6,7 @@ import (
 	"crypto/rand"
 )
 
-func EncryptAES(key, decryptedData []byte) ([]byte, error) {
+func Encrypt(key, decryptedData []byte) ([]byte, error) {
 	block, err := aes.NewCipher(key)
 	if err != nil {
 		return nil, err
@@ -24,7 +24,7 @@ func EncryptAES(key, decryptedData []byte) ([]byte, error) {
 	return ciphertext, nil
 }
 
-func DecryptAES(key, encryptedData []byte) (string, error) {
+func Decrypt(key, encryptedData []byte) (string, error) {
 	block, err := aes.NewCipher(key)
 	if err != nil {
 		return "", err
