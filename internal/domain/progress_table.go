@@ -1,7 +1,8 @@
 package domain
 
 type ProgressTable struct {
-	Disciplines []Discipline
+	BarsCredentialsID string
+	Disciplines       []Discipline
 }
 
 type Discipline struct {
