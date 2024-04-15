@@ -43,15 +43,16 @@ func main() {
 		barsCredentialService,
 		progressTablesRepository,
 	)
-	gradesChangesService := grades_changes.NewService(
-		progressTableService,
-		barsCredentialService,
-		cfg.Bars,
-	)
 	telegramService, err := telegram.NewService(
 		userService,
 		barsCredentialService,
 		cfg.Telegram,
+	)
+	gradesChangesService := grades_changes.NewService(
+		progressTableService,
+		barsCredentialService,
+		telegramService,
+		cfg.Bars,
 	)
 	if err != nil {
 		log.Fatalf("cant initialize telegram service: %v", err)

@@ -17,11 +17,13 @@ import (
 	"github.com/ilyadubrovsky/tracking-bars/internal/service"
 	"github.com/ilyadubrovsky/tracking-bars/pkg/aes"
 	"github.com/ilyadubrovsky/tracking-bars/pkg/bars"
+	"gopkg.in/telebot.v3"
 )
 
 type svc struct {
 	progressTableSvc  service.ProgressTable
 	barsCredentialSvc service.BarsCredential
+	telegramSvc       service.Telegram
 	cfg               config.Bars
 	stopFunc          func()
 }
@@ -29,11 +31,13 @@ type svc struct {
 func NewService(
 	progressTableSvc service.ProgressTable,
 	barsCredentialSvc service.BarsCredential,
+	telegramSvc service.Telegram,
 	cfg config.Bars,
 ) *svc {
 	return &svc{
 		progressTableSvc:  progressTableSvc,
 		barsCredentialSvc: barsCredentialSvc,
+		telegramSvc:       telegramSvc,
 		cfg:               cfg,
 	}
 }
@@ -63,8 +67,15 @@ func (s *svc) sendActualCredentials(
 	ctx context.Context,
 	credentialsChan chan<- *domain.BarsCredentials,
 ) {
-	// barsCredentials.GetAll()
-	// for range <- send
+	barsCredentials, err := s.barsCredentialSvc.GetAll(ctx)
+	if err != nil {
+		// TODO logging
+		return
+	}
+
+	for _, barsCredential := range barsCredentials {
+		credentialsChan <- barsCredential
+	}
 }
 
 func (s *svc) checkChangesWorker(credentialsChan <-chan *domain.BarsCredentials) {
@@ -113,12 +124,23 @@ func (s *svc) checkChanges(
 		if err != nil {
 			return fmt.Errorf("compareProgressTables: %w", err)
 		}
-		if len(changes) <= 0 {
+		if len(changes) == 0 {
 			return nil
 		}
 
-		_ = changes
-		// TODO send changes to tg
+		// TODO с ModeMarkdown нужн что-то сделать(
+		for _, change := range changes {
+			err = s.telegramSvc.SendMessageWithOpts(
+				credentials.UserID,
+				change.String(),
+				telebot.ModeMarkdown,
+			)
+			if err != nil {
+				// TODO logging with PARAMS
+				// TODO ретраи можно сделать, чтобы не терять изменения
+				// или прихранивать их где-то
+			}
+		}
 	}
 
 	if err = s.progressTableSvc.Save(ctx, progressTable); err != nil {
@@ -129,11 +151,12 @@ func (s *svc) checkChanges(
 }
 
 func (s *svc) Stop() error {
-	if s.stopFunc != nil {
-		s.stopFunc()
+	if s.stopFunc == nil {
+		return errors.New("service is not started")
 	}
 
-	return errors.New("service is not started")
+	s.stopFunc()
+	return nil
 }
 
 func getProgressTableDocument(

@@ -86,3 +86,7 @@ func (s *svc) Logout(ctx context.Context, userID int64) error {
 
 	return nil
 }
+
+func (s *svc) GetAll(ctx context.Context) ([]*domain.BarsCredentials, error) {
+	return nil, nil
+}
