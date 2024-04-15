@@ -41,7 +41,7 @@ func NewService(
 func (s *svc) Authorization(ctx context.Context, credentials *domain.BarsCredentials) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	defer s.barsClient.Clear(ctx)
+	defer s.barsClient.Clear()
 
 	repoCredentials, err := s.barsCredentialsRepo.Get(ctx, credentials.UserID)
 	if err != nil {

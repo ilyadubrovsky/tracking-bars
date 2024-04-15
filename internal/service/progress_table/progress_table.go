@@ -26,3 +26,7 @@ func NewService(
 func (s *svc) Save(ctx context.Context, progressTable *domain.ProgressTable) error {
 	return nil
 }
+
+func (s *svc) GetProgressTable(ctx context.Context, userID int64) (*domain.ProgressTable, error) {
+	return nil, nil
+}

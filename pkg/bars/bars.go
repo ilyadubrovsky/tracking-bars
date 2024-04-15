@@ -20,7 +20,7 @@ var (
 type Client interface {
 	Authorization(ctx context.Context, username, password string) error
 	MakeRequest(ctx context.Context, method string, url string, body io.Reader) (*http.Response, error)
-	Clear(ctx context.Context)
+	Clear()
 }
 
 type client struct {
@@ -100,7 +100,7 @@ func (c *client) MakeRequest(ctx context.Context, method string, url string, bod
 
 // Clear очищает данные внутри клиента, нужно делать перед каждой новой сессией
 // TODO наверное, можно делать более эффективно
-func (c *client) Clear(ctx context.Context) {
+func (c *client) Clear() {
 	jar, _ := cookiejar.New(nil)
 	c.httpClient.Jar = jar
 }

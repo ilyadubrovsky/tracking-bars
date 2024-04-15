@@ -4,6 +4,8 @@ go 1.21.6
 
 require (
 	github.com/BurntSushi/toml v1.2.0 // indirect
+	github.com/PuerkitoBio/goquery v1.8.0 // indirect
+	github.com/andybalholm/cascadia v1.3.1 // indirect
 	github.com/ilyakaznacheev/cleanenv v1.2.6 // indirect
 	github.com/jackc/chunkreader/v2 v2.0.1 // indirect
 	github.com/jackc/pgconn v1.12.1 // indirect
@@ -15,6 +17,7 @@ require (
 	github.com/jackc/pgx/v4 v4.16.1 // indirect
 	github.com/joho/godotenv v1.4.0 // indirect
 	golang.org/x/crypto v0.17.0 // indirect
+	golang.org/x/net v0.10.0 // indirect
 	golang.org/x/text v0.14.0 // indirect
 	gopkg.in/telebot.v3 v3.0.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect

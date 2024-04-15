@@ -45,6 +45,7 @@ func main() {
 	)
 	gradesChangesService := grades_changes.NewService(
 		progressTableService,
+		barsCredentialService,
 		cfg.Bars,
 	)
 	telegramService, err := telegram.NewService(
@@ -56,11 +57,7 @@ func main() {
 		log.Fatalf("cant initialize telegram service: %v", err)
 	}
 
-	_, err = gradesChangesService.Start()
-	if err != nil {
-		log.Fatalf("cant start grades changes service: %v", err)
-	}
-
+	gradesChangesService.Start()
 	telegramService.Start()
 
 	// TODO gracefully shutdown
