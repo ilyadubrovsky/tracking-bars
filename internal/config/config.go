@@ -2,6 +2,11 @@ package config
 
 import "time"
 
+const (
+	BARSRegistrationPageURL = "https://bars.mpei.ru/bars_web/"
+	BARSMainPageURL         = "https://bars.mpei.ru/bars_web/?sod=1"
+)
+
 type Config struct {
 	Telegram Telegram
 	Bars     Bars

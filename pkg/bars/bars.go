@@ -11,22 +11,29 @@ import (
 	"strings"
 )
 
+// TODO ErrWrongGradesPage
 var ErrNoAuth = errors.New("authorization in BARS has not been completed")
 
-type Client struct {
+type Client interface {
+	Authorization(ctx context.Context, username, password string) error
+	MakeRequest(ctx context.Context, method string, url string, body io.Reader) (*http.Response, error)
+	Clear(ctx context.Context)
+}
+
+type client struct {
 	httpClient      *http.Client
 	registrationURL string
 }
 
-func NewClient(registrationURL string) *Client {
+func NewClient(registrationURL string) Client {
 	jar, _ := cookiejar.New(nil)
-	return &Client{
+	return &client{
 		httpClient:      &http.Client{Jar: jar},
 		registrationURL: registrationURL,
 	}
 }
 
-func (c *Client) Authorization(ctx context.Context, username, password string) error {
+func (c *client) Authorization(ctx context.Context, username, password string) error {
 	verificationToken, err := c.getVerificationToken(ctx)
 	if err != nil {
 		return fmt.Errorf("getVerificationToken: %w", err)
@@ -59,7 +66,7 @@ func (c *Client) Authorization(ctx context.Context, username, password string) e
 
 	_, err = io.ReadAll(response.Body)
 	if err != nil {
-		return fmt.Errorf("io.ReadAll: %w", err)
+		return fmt.Errorf("io.ReadAll (response.Body): %w", err)
 	}
 
 	defer response.Body.Close()
@@ -71,7 +78,7 @@ func (c *Client) Authorization(ctx context.Context, username, password string) e
 	return nil
 }
 
-func (c *Client) MakeRequest(ctx context.Context, method string, url string, body io.Reader) (*http.Response, error) {
+func (c *client) MakeRequest(ctx context.Context, method string, url string, body io.Reader) (*http.Response, error) {
 	request, err := http.NewRequestWithContext(ctx, method, url, body)
 	if err != nil {
 		return nil, fmt.Errorf("http.NewRequestWithContext: %w", err)
@@ -90,14 +97,12 @@ func (c *Client) MakeRequest(ctx context.Context, method string, url string, bod
 
 // Clear очищает данные внутри клиента, нужно делать перед каждой новой сессией
 // TODO наверное, можно делать более эффективно
-func (c *Client) Clear(ctx context.Context) error {
+func (c *client) Clear(ctx context.Context) {
 	jar, _ := cookiejar.New(nil)
 	c.httpClient.Jar = jar
-
-	return nil
 }
 
-func (c *Client) getVerificationToken(ctx context.Context) (string, error) {
+func (c *client) getVerificationToken(ctx context.Context) (string, error) {
 	response, err := c.MakeRequest(ctx, http.MethodPost, c.registrationURL, nil)
 	if err != nil {
 		return "", fmt.Errorf("MakeRequest: %w", err)
@@ -114,12 +119,11 @@ func (c *Client) getVerificationToken(ctx context.Context) (string, error) {
 	return "", errors.New("verification token was not provided by BARS")
 }
 
-func (c *Client) isAuthorized(response *http.Response) bool {
+func (c *client) isAuthorized(response *http.Response) bool {
 	cookies := response.Request.Cookies()
 
 	for _, cookie := range cookies {
-		if cookie.Name == "auth_bars" ||
-			cookie.Name == "ASP.NET_SessionId=k5ze3r11df3absu0idsy2xj5" {
+		if cookie.Name == "auth_bars" || cookie.Name == "ASP.NET_SessionId" {
 			return true
 		}
 	}
