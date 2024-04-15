@@ -9,13 +9,14 @@ type Config struct {
 }
 
 type Bars struct {
-	CronDelay          time.Time
+	CronDelay          time.Duration
 	CronWorkerPoolSize int
 	EncryptionKey      string
 }
 
 type Telegram struct {
-	BotToken string
+	BotToken        string
+	LongPollerDelay time.Duration
 }
 
 type Postgres struct {
