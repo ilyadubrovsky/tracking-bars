@@ -98,6 +98,7 @@ func (s *svc) checkChanges(
 	barsClient bars.Client,
 	credentials *domain.BarsCredentials,
 ) error {
+	// TODO в теории могут быть проблемы с тем, что пользователь мог разлогиниться за время обхода
 	decryptedPassword, err := aes.Decrypt([]byte(s.cfg.EncryptionKey), credentials.Password)
 	if err != nil {
 		return fmt.Errorf("aes.Decrypt: %w", err)
