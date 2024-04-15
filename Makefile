@@ -9,8 +9,12 @@ run:
 stop:
 	docker compose down
 
+# make N=your_name create-migration
+create-migration:
+	goose --dir migrations create ${N} sql
+
 migrate-up:
-	migrate -path ./migrations -database "postgres://postgres:12345678@localhost:5433/trackingbars?sslmode=disable" up
+	goose -dir=./migrations postgres "host=localhost port=5432 user=postgres password=postgres dbname=tracking-bars" up
 
 migrate-down:
-	migrate -path ./migrations -database "postgres://postgres:12345678@localhost:5433/trackingbars?sslmode=disable" down
+	goose -dir=./migrations postgres "host=localhost port=5432 user=postgres password=postgres dbname=tracking-bars" down
