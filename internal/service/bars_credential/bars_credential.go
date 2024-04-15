@@ -71,15 +71,7 @@ func (s *svc) Authorization(ctx context.Context, credentials *domain.BarsCredent
 }
 
 func (s *svc) Logout(ctx context.Context, userID int64) error {
-	repoCredentials, err := s.barsCredentialsRepo.Get(ctx, userID)
-	if err != nil {
-		return fmt.Errorf("barsCredentialsRepo.Get: %w", err)
-	}
-	if repoCredentials == nil {
-		return ierrors.ErrNotAuthorized
-	}
-
-	err = s.progressTableSvc.Delete(ctx, userID)
+	err := s.progressTableSvc.Delete(ctx, userID)
 	if err != nil {
 		return fmt.Errorf("progressTableSvc.Delete: %w", err)
 	}
@@ -99,18 +91,4 @@ func (s *svc) GetAllAuthorized(ctx context.Context) ([]*domain.BarsCredentials, 
 	}
 
 	return barsCredentials, nil
-}
-
-func (s *svc) Delete(ctx context.Context, userID int64) error {
-	err := s.progressTableSvc.Delete(ctx, userID)
-	if err != nil {
-		return fmt.Errorf("progressTableSvc.Delete: %w", err)
-	}
-
-	err = s.barsCredentialsRepo.Delete(ctx, userID)
-	if err != nil {
-		return fmt.Errorf("barsCredentialsRepo.Delete: %w", err)
-	}
-
-	return nil
 }

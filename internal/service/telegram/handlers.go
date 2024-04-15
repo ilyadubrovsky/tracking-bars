@@ -91,10 +91,7 @@ func (s *svc) handleAuthCommand(c tele.Context) error {
 
 func (s *svc) handleLogoutCommand(c tele.Context) error {
 	err := s.barsCredentialSvc.Logout(context.Background(), c.Sender().ID)
-	switch {
-	case errors.Is(err, ierrors.ErrNotAuthorized):
-		return s.SendMessageWithOpts(c.Sender().ID, config.ClientNotAuthorized)
-	case err != nil:
+	if err != nil {
 		return s.SendMessageWithOpts(c.Sender().ID, config.BotError)
 	}
 

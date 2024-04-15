@@ -110,7 +110,7 @@ func (s *svc) checkChanges(
 			return fmt.Errorf("telegramSvc.SendMessageWithOpts(credentialsExpired): %w", err)
 		}
 
-		deleteErr := s.barsCredentialSvc.Delete(ctx, credentials.UserID)
+		deleteErr := s.barsCredentialSvc.Logout(ctx, credentials.UserID)
 		if deleteErr != nil {
 			return fmt.Errorf("barsCredentialSvc.Delete: %w", err)
 		}
