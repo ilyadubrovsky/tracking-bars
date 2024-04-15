@@ -54,7 +54,7 @@ func createBot(cfg config.Telegram) (*tele.Bot, error) {
 }
 
 func (s *svc) setBotSettings() {
-	// TODO провалидировать всю логику заново так как телебот обновился
+	// TODO в общем-то нужен ratelimiter на все эти ручки
 	s.bot.Handle(tele.OnCallback, s.handleCallback)
 
 	s.bot.Handle("/start", s.handleStartCommand)

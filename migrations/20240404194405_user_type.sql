@@ -1,11 +1,11 @@
 -- +goose Up
 -- +goose StatementBegin
-CREATE TABLE users (
-    id BIGINT PRIMARY KEY
+CREATE TYPE "user" AS (
+    id BIGINT
 );
 -- +goose StatementEnd
 
 -- +goose Down
 -- +goose StatementBegin
-DROP TABLE IF EXISTS users;
+DROP TYPE IF EXISTS "user";
 -- +goose StatementEnd

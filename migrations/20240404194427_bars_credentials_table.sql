@@ -11,5 +11,5 @@ CREATE TABLE bars_credentials (
 
 -- +goose Down
 -- +goose StatementBegin
-DROP TABLE bars_credentials IF EXISTS;
+DROP TABLE IF EXISTS bars_credentials;
 -- +goose StatementEnd

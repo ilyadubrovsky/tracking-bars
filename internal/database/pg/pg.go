@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	"github.com/ilyadubrovsky/tracking-bars/internal/database"
-	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v4"
 )
 
 func New(ctx context.Context, dsn string) (database.PG, error) {
@@ -13,7 +13,6 @@ func New(ctx context.Context, dsn string) (database.PG, error) {
 	if err != nil {
 		return nil, fmt.Errorf("pgx.Connect: %w", err)
 	}
-	defer conn.Close(ctx)
 
 	if err = conn.Ping(ctx); err != nil {
 		return nil, fmt.Errorf("conn.Ping: %w", err)

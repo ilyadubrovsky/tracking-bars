@@ -12,5 +12,5 @@ CREATE TABLE progress_tables (
 
 -- +goose Down
 -- +goose StatementBegin
-DROP TABLE progress_tables IF EXISTS;
+DROP TABLE IF EXISTS progress_tables;
 -- +goose StatementEnd
