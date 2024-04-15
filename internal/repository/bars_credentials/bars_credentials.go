@@ -1,16 +1,20 @@
-package repository
+package bars_credentials
 
 import (
 	"context"
 
+	"github.com/ilyadubrovsky/tracking-bars/internal/database"
 	"github.com/ilyadubrovsky/tracking-bars/internal/domain"
 )
 
 type repo struct {
+	db database.PG
 }
 
-func NewBarsCredentials() *repo {
-	return &repo{}
+func NewRepository(db database.PG) *repo {
+	return &repo{
+		db: db,
+	}
 }
 
 func (r *repo) Save(ctx context.Context, barsCredentials *domain.BarsCredentials) error {
