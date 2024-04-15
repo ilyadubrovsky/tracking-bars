@@ -9,6 +9,7 @@ import (
 	"github.com/ilyadubrovsky/tracking-bars/internal/domain"
 	ierrors "github.com/ilyadubrovsky/tracking-bars/internal/errors"
 	"github.com/ilyadubrovsky/tracking-bars/internal/repository"
+	"github.com/ilyadubrovsky/tracking-bars/internal/service"
 	"github.com/ilyadubrovsky/tracking-bars/pkg/aes"
 	"github.com/ilyadubrovsky/tracking-bars/pkg/bars"
 )
@@ -16,6 +17,7 @@ import (
 // TODO здесь должнен быть пул клиентов, реализация с мьютексом медленная
 // нужно сбрасывать клиента через Clear() после использования перед возвращением в пул
 type svc struct {
+	userSvc             service.User
 	barsCredentialsRepo repository.BarsCredentials
 	cfg                 config.Bars
 
@@ -24,10 +26,12 @@ type svc struct {
 }
 
 func NewService(
+	userSvc service.User,
 	barsCredentialsRepo repository.BarsCredentials,
 	cfg config.Bars,
 ) *svc {
 	return &svc{
+		userSvc:             userSvc,
 		barsCredentialsRepo: barsCredentialsRepo,
 		cfg:                 cfg,
 		barsClient:          bars.NewClient(config.BARSRegistrationPageURL),

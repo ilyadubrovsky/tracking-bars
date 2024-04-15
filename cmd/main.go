@@ -33,9 +33,16 @@ func main() {
 	progressTablesRepository := progress_tables.NewRepository(db)
 
 	userService := user.NewService(usersRepository)
-	progressTableService := progress_table.NewService(progressTablesRepository)
+	barsCredentialService := bars_credential.NewService(
+		userService,
+		barsCredentialsRepository,
+		cfg.Bars,
+	)
+	progressTableService := progress_table.NewService(
+		barsCredentialService,
+		progressTablesRepository,
+	)
 	_ = progressTableService
-	barsCredentialService := bars_credential.NewService(barsCredentialsRepository, cfg.Bars)
 	telegramSvc, err := telegram.NewService(
 		userService,
 		barsCredentialService,
