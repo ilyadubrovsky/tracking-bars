@@ -54,7 +54,7 @@ func (r *repo) Get(ctx context.Context, userID int64) (*domain.User, error) {
 		return nil, nil
 	}
 	if err != nil {
-		return nil, fmt.Errorf("db.QueryRow: %w", err)
+		return nil, fmt.Errorf("db.QueryRow.Scan: %w", err)
 	}
 
 	return user, nil
