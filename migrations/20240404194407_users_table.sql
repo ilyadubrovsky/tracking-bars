@@ -1,7 +1,9 @@
 -- +goose Up
 -- +goose StatementBegin
 CREATE TABLE users (
-    id BIGINT PRIMARY KEY
+    id BIGINT PRIMARY KEY,
+    created_at TIMESTAMPTZ NOT NULL,
+    deleted_at TIMESTAMPTZ NULL
 );
 -- +goose StatementEnd
 

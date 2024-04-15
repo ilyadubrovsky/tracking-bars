@@ -1,7 +1,9 @@
 -- +goose Up
 -- +goose StatementBegin
 CREATE TYPE "user" AS (
-    id BIGINT
+    id BIGINT,
+    created_at TIMESTAMPTZ,
+    deleted_at TIMESTAMPTZ
 );
 -- +goose StatementEnd
 
