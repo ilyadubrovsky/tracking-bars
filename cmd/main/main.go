@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"log"
+	"time"
 
 	"github.com/ilyadubrovsky/tracking-bars/internal/config"
 	"github.com/ilyadubrovsky/tracking-bars/internal/database/pg"
@@ -14,12 +15,14 @@ import (
 	"github.com/ilyadubrovsky/tracking-bars/internal/service/progress_table"
 	"github.com/ilyadubrovsky/tracking-bars/internal/service/telegram"
 	"github.com/ilyadubrovsky/tracking-bars/internal/service/user"
+	"github.com/rs/zerolog"
 )
 
 func main() {
 	ctx := context.Background()
 
-	initLogger(ctx)
+	zerolog.TimeFieldFormat = time.RFC3339
+	zerolog.SetGlobalLevel(zerolog.InfoLevel)
 
 	cfg, err := config.NewConfig()
 	if err != nil {
