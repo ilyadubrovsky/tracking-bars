@@ -11,4 +11,5 @@ type BarsCredentials interface {
 	GetByUserID(ctx context.Context, userID int64) (*domain.BarsCredentials, error)
 	Delete(ctx context.Context, userID int64) error
 	GetAll(ctx context.Context) ([]*domain.BarsCredentials, error)
+	Count(ctx context.Context) (int, error)
 }

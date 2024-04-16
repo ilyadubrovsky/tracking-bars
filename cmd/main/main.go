@@ -49,6 +49,7 @@ func main() {
 	telegramService, err := telegram.NewService(
 		userService,
 		barsService,
+		barsCredentialsRepository,
 		cfg.Telegram,
 	)
 	gradesChangesService := grades_changes.NewService(

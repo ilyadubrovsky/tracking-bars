@@ -147,3 +147,20 @@ func (r *repo) GetAll(ctx context.Context) ([]*domain.BarsCredentials, error) {
 
 	return dbo.ManyToDomain(dboCredentials), nil
 }
+
+func (r *repo) Count(ctx context.Context) (int, error) {
+	query := `
+		SELECT count(*)
+		FROM
+		    bars_credentials
+		WHERE deleted_at IS NULL
+	`
+
+	count := 0
+	err := r.db.QueryRow(ctx, query).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("db.Query: %w", err)
+	}
+
+	return count, nil
+}

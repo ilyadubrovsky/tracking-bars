@@ -188,6 +188,18 @@ func (s *svc) handleAdminSendMessageCommand(c tele.Context) error {
 			userID, input[2]), tele.ModeMarkdown)
 }
 
+func (s *svc) handleAdminCountAuthorizedCommand(c tele.Context) error {
+	count, err := s.barsCredentialsRepo.Count(context.Background())
+	if err != nil {
+		return s.SendMessageWithOpts(c.Sender().ID, answers.BotError)
+	}
+
+	return s.SendMessageWithOpts(
+		c.Sender().ID,
+		fmt.Sprintf("Количество авторизованных: %d", count),
+	)
+}
+
 func (s *svc) handleFixGradesCommand(c tele.Context) error {
 	return s.SendMessageWithOpts(c.Sender().ID, answers.FixGrades, tele.ModeMarkdown)
 }
