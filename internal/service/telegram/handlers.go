@@ -134,7 +134,7 @@ func (s *svc) handleAdminEchoCommand(c tele.Context) error {
 		return s.SendMessageWithOpts(c.Sender().ID, answers.AdminInvalidArgument)
 	}
 
-	return s.SendMessageWithOpts(c.Sender().ID, input[1], tele.ModeMarkdownV2)
+	return s.SendMessageWithOpts(c.Sender().ID, input[1], tele.ModeMarkdown)
 }
 
 func (s *svc) handleAdminSendMessageAllCommand(c tele.Context) error {
