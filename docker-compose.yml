@@ -1,12 +1,12 @@
 version: '3.7'
 
 services:
-  #tracking-bars:
-  #  command: ./tracking-bars
-  #  depends_on:
-  #    postgres:
-  #      condition: service_healthy
-  #  image: tracking-bars
+  tracking-bars:
+    build: ./
+    image: tracking-bars
+    depends_on:
+      postgres:
+        condition: service_healthy
   postgres:
     restart: always
     image: postgres:13.3

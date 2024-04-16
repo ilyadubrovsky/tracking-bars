@@ -1,3 +1,12 @@
+build:
+	docker-compose build tracking-bars
+
+run:
+	docker-compose up -d
+
+stop:
+	docker-compose down
+
 # make N=your_name create-migration
 create-migration:
 	goose --dir migrations create ${N} sql

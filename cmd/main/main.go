@@ -37,6 +37,7 @@ func main() {
 	progressTableService := progress_table.NewService(progressTablesRepository)
 	barsService := bars.NewService(
 		progressTableService,
+		userService,
 		barsCredentialsRepository,
 		cfg.Bars,
 	)

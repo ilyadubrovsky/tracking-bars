@@ -18,6 +18,7 @@ import (
 // нужно сбрасывать клиента через Clear() после использования перед возвращением в пул
 type svc struct {
 	progressTableSvc    service.ProgressTable
+	userSvc             service.User
 	barsCredentialsRepo repository.BarsCredentials
 	cfg                 config.Bars
 
@@ -27,11 +28,13 @@ type svc struct {
 
 func NewService(
 	progressTableSvc service.ProgressTable,
+	userSvc service.User,
 	barsCredentialsRepo repository.BarsCredentials,
 	cfg config.Bars,
 ) *svc {
 	return &svc{
 		barsCredentialsRepo: barsCredentialsRepo,
+		userSvc:             userSvc,
 		progressTableSvc:    progressTableSvc,
 		cfg:                 cfg,
 		barsClient:          bars.NewClient(config.BARSRegistrationPageURL),
@@ -49,6 +52,11 @@ func (s *svc) Authorization(ctx context.Context, credentials *domain.BarsCredent
 	}
 	if repoCredentials != nil {
 		return ierrors.ErrAlreadyAuth
+	}
+
+	err = s.userSvc.Save(ctx, &domain.User{ID: credentials.UserID})
+	if err != nil {
+		return fmt.Errorf("userSvc.Save: %w", err)
 	}
 
 	err = s.barsClient.Authorization(ctx, credentials.Username, string(credentials.Password))

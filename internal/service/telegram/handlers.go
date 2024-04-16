@@ -41,7 +41,7 @@ func (s *svc) handleStartCommand(c tele.Context) error {
 		},
 	)
 	if err != nil {
-		return s.SendMessageWithOpts(c.Sender().ID, config.StartError)
+		return s.SendMessageWithOpts(c.Sender().ID, config.BotError)
 	}
 
 	return s.SendMessageWithOpts(c.Sender().ID, config.Start)

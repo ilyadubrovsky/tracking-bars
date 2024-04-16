@@ -28,7 +28,9 @@ func (r *repo) Save(ctx context.Context, user *domain.User) error {
 		    created_at
 		)
 		VALUES ($1, $2)
-		ON CONFLICT (id) DO NOTHING 
+		ON CONFLICT (id)
+		DO UPDATE
+		SET deleted_at = NULL;
 	`
 
 	_, err := r.db.Exec(ctx, query, user.ID, time.Now())
