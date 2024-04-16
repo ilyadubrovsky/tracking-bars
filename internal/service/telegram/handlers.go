@@ -12,6 +12,7 @@ import (
 	"github.com/ilyadubrovsky/tracking-bars/internal/domain"
 	ierrors "github.com/ilyadubrovsky/tracking-bars/internal/errors"
 	"github.com/ilyadubrovsky/tracking-bars/pkg/bars"
+	"github.com/rs/zerolog/log"
 	tele "gopkg.in/telebot.v3"
 )
 
@@ -34,13 +35,14 @@ func (s *svc) handleCallback(c tele.Context) error {
 }
 
 func (s *svc) handleStartCommand(c tele.Context) error {
-	err := s.userSvc.Save(
-		context.Background(),
-		&domain.User{
-			ID: c.Sender().ID,
-		},
-	)
+	logger := log.With().Fields(extractTelebotFields(c)).Logger()
+	ctx := logger.WithContext(context.Background())
+	err := s.userSvc.Save(ctx, &domain.User{
+		ID: c.Sender().ID,
+	})
 	if err != nil {
+		err = fmt.Errorf("userSvc.Save: %w", err)
+		logger.Error().Msgf("handleStartCommand: %v", err.Error())
 		return s.SendMessageWithOpts(c.Sender().ID, config.BotError)
 	}
 
@@ -53,6 +55,9 @@ func (s *svc) handleHelpCommand(c tele.Context) error {
 
 // TODO пока не придумал че делать если /start не написал пользователь и не попал в таблицу users(
 func (s *svc) handleAuthCommand(c tele.Context) error {
+	logger := log.With().Fields(extractTelebotFields(c)).Logger()
+	ctx := logger.WithContext(context.Background())
+
 	if c.Message().Payload == "" {
 		return s.SendMessageWithOpts(c.Sender().ID, config.CredentialsNoEntered)
 	}
@@ -70,7 +75,7 @@ func (s *svc) handleAuthCommand(c tele.Context) error {
 		return s.SendMessageWithOpts(c.Sender().ID, config.CredentialsIncorrectly)
 	}
 
-	err := s.barsSvc.Authorization(context.Background(), &domain.BarsCredentials{
+	err := s.barsSvc.Authorization(ctx, &domain.BarsCredentials{
 		UserID:   c.Sender().ID,
 		Username: username,
 		Password: []byte(password),
@@ -83,6 +88,8 @@ func (s *svc) handleAuthCommand(c tele.Context) error {
 	case errors.Is(err, ierrors.ErrAlreadyAuth):
 		return s.SendMessageWithOpts(c.Sender().ID, config.ClientAlreadyAuthorized)
 	case err != nil:
+		err = fmt.Errorf("barsSvc.Authorization: %w", err)
+		logger.Error().Msgf("handleAuthCommand: %v", err.Error())
 		return s.SendMessageWithOpts(c.Sender().ID, config.BotError)
 	}
 
@@ -90,8 +97,13 @@ func (s *svc) handleAuthCommand(c tele.Context) error {
 }
 
 func (s *svc) handleLogoutCommand(c tele.Context) error {
-	err := s.barsSvc.Logout(context.Background(), c.Sender().ID)
+	logger := log.With().Fields(extractTelebotFields(c)).Logger()
+	ctx := logger.WithContext(context.Background())
+
+	err := s.barsSvc.Logout(ctx, c.Sender().ID)
 	if err != nil {
+		err = fmt.Errorf("barsSvc.Logout: %w", err)
+		logger.Error().Msgf("handleLogoutCommand: %v", err.Error())
 		return s.SendMessageWithOpts(c.Sender().ID, config.BotError)
 	}
 
@@ -153,4 +165,11 @@ func isValidUserData(username string) bool {
 		return false
 	}
 	return true
+}
+
+func extractTelebotFields(c tele.Context) map[string]interface{} {
+	return map[string]interface{}{
+		"sender":   c.Sender().ID,
+		"username": c.Sender().Username,
+	}
 }

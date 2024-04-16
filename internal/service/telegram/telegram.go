@@ -6,6 +6,7 @@ import (
 
 	"github.com/ilyadubrovsky/tracking-bars/internal/config"
 	"github.com/ilyadubrovsky/tracking-bars/internal/service"
+	"github.com/rs/zerolog/log"
 	tele "gopkg.in/telebot.v3"
 	"gopkg.in/telebot.v3/middleware"
 )
@@ -43,6 +44,10 @@ func createBot(cfg config.Telegram) (*tele.Bot, error) {
 	pref := tele.Settings{
 		Token:  cfg.BotToken,
 		Poller: &tele.LongPoller{Timeout: cfg.LongPollerDelay},
+		OnError: func(err error, c tele.Context) {
+			log.Error().Fields(extractTelebotFields(c)).
+				Msgf("bot.OnError: %v", err.Error())
+		},
 	}
 
 	abot, err := tele.NewBot(pref)
@@ -110,7 +115,6 @@ func (s *svc) EditMessageWithOpts(id int64, messageID int, msg string, opts ...i
 	return s.middlewareError(id, err)
 }
 
-// TODO в теории тут можно обрабатывать и все сервисные ошибки
 func (s *svc) middlewareError(targetUserID int64, err error) error {
 	if err == nil {
 		return nil

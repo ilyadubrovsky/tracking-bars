@@ -19,6 +19,8 @@ import (
 func main() {
 	ctx := context.Background()
 
+	initLogger(ctx)
+
 	cfg, err := config.NewConfig()
 	if err != nil {
 		log.Fatalf("cant initialize config: %v", err)

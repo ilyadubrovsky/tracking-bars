@@ -18,6 +18,7 @@ import (
 	"github.com/ilyadubrovsky/tracking-bars/internal/service"
 	"github.com/ilyadubrovsky/tracking-bars/pkg/aes"
 	"github.com/ilyadubrovsky/tracking-bars/pkg/bars"
+	"github.com/rs/zerolog/log"
 	"gopkg.in/telebot.v3"
 )
 
@@ -55,6 +56,7 @@ func (s *svc) Start() {
 		for {
 			select {
 			case <-time.After(s.cfg.CronDelay):
+				log.Info().Msg("sending actual credentials")
 				s.sendActualCredentials(ctx, jobChan)
 			case <-ctx.Done():
 				close(jobChan)
@@ -63,6 +65,7 @@ func (s *svc) Start() {
 		}
 	}()
 	for i := 0; i < s.cfg.CronWorkerPoolSize; i++ {
+		log.Info().Msgf("start %d grades changes worker", i+1)
 		go s.checkChangesWorker(jobChan)
 	}
 }
@@ -73,7 +76,8 @@ func (s *svc) sendActualCredentials(
 ) {
 	barsCredentials, err := s.barsCredentialsRepo.GetAllAuthorized(ctx)
 	if err != nil {
-		// TODO logging
+		err = fmt.Errorf("barsCredentialsRepo.GetAllAuthorized: %w", err)
+		log.Error().Msgf("sendActualCredentials: %v", err.Error())
 		return
 	}
 
@@ -89,7 +93,8 @@ func (s *svc) checkChangesWorker(credentialsChan <-chan *domain.BarsCredentials)
 
 		err := s.checkChanges(ctx, barsClient, credentials)
 		if err != nil {
-			// TODO logging with userID
+			log.Error().Int64("user", credentials.UserID).
+				Msgf("checkChangesWorker: checkChanges: %v", err.Error())
 		}
 
 		barsClient.Clear()
@@ -120,6 +125,8 @@ func (s *svc) checkChanges(
 			return fmt.Errorf("barsSvc.Logout(authFailed): %w", err)
 		}
 
+		log.Info().Int64("user", credentials.UserID).
+			Msg("deleting user with failed authorization")
 		return nil
 	}
 	if errors.Is(err, ierrors.ErrWrongGradesPage) {
@@ -133,6 +140,8 @@ func (s *svc) checkChanges(
 			return fmt.Errorf("barsSvc.Delete(wrongGradesPage): %w", err)
 		}
 
+		log.Info().Int64("user", credentials.UserID).
+			Msg("deleting user with wrong grades page")
 		return nil
 	}
 	if err != nil {
@@ -167,7 +176,8 @@ func (s *svc) checkChanges(
 				telebot.ModeMarkdown,
 			)
 			if sendMsgErr != nil {
-				// TODO logging with PARAMS
+				log.Error().Int64("user", change.UserID).
+					Msg("sending user's grade change failed")
 				// TODO ретраи можно сделать, чтобы не терять изменения
 				// или прихранивать их где-то
 				continue
