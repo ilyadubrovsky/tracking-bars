@@ -41,13 +41,14 @@ func (r *repo) Save(ctx context.Context, user *domain.User) error {
 	return nil
 }
 
-func (r *repo) Get(ctx context.Context, userID int64) (*domain.User, error) {
+func (r *repo) GetByUserID(ctx context.Context, userID int64) (*domain.User, error) {
 	query := `
 	SELECT 
 	    id
 	FROM 
 	    users
 	WHERE id = $1
+	AND deleted_at IS NULL
 	`
 
 	user := new(domain.User)
@@ -60,4 +61,51 @@ func (r *repo) Get(ctx context.Context, userID int64) (*domain.User, error) {
 	}
 
 	return user, nil
+}
+
+func (r *repo) GetAll(ctx context.Context) ([]*domain.User, error) {
+	query := `
+	SELECT 
+	    id
+	FROM 
+	    users
+	WHERE deleted_at IS NULL
+	`
+
+	rows, err := r.db.Query(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("db.Query: %w", err)
+	}
+	defer func() {
+		rows.Close()
+	}()
+
+	users := make([]*domain.User, 0)
+	for rows.Next() {
+		user := new(domain.User)
+		err = rows.Scan(
+			&user.ID,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("rows.Scan: %w", err)
+		}
+		users = append(users, user)
+	}
+
+	return users, nil
+}
+
+func (r *repo) Delete(ctx context.Context, userID int64) error {
+	query := `
+		UPDATE users
+		SET deleted_at = $2
+		WHERE id = $1
+	`
+
+	_, err := r.db.Exec(ctx, query, userID, time.Now())
+	if err != nil {
+		return fmt.Errorf("db.Exec: %w", err)
+	}
+
+	return nil
 }

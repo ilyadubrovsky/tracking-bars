@@ -12,6 +12,7 @@ import (
 
 	"github.com/PuerkitoBio/goquery"
 	"github.com/ilyadubrovsky/tracking-bars/internal/config"
+	"github.com/ilyadubrovsky/tracking-bars/internal/config/answers"
 	"github.com/ilyadubrovsky/tracking-bars/internal/domain"
 	ierrors "github.com/ilyadubrovsky/tracking-bars/internal/errors"
 	"github.com/ilyadubrovsky/tracking-bars/internal/repository"
@@ -74,9 +75,9 @@ func (s *svc) sendActualCredentials(
 	ctx context.Context,
 	credentialsChan chan<- *domain.BarsCredentials,
 ) {
-	barsCredentials, err := s.barsCredentialsRepo.GetAllAuthorized(ctx)
+	barsCredentials, err := s.barsCredentialsRepo.GetAll(ctx)
 	if err != nil {
-		err = fmt.Errorf("barsCredentialsRepo.GetAllAuthorized: %w", err)
+		err = fmt.Errorf("barsCredentialsRepo.GetAll: %w", err)
 		log.Error().Msgf("sendActualCredentials: %v", err.Error())
 		return
 	}
@@ -115,7 +116,7 @@ func (s *svc) checkChanges(
 
 	document, err := getGradesPageDocument(ctx, barsClient, credentials.Username, decryptedPassword)
 	if errors.Is(err, bars.ErrAuthorizationFailed) {
-		sendMsgErr := s.telegramSvc.SendMessageWithOpts(credentials.UserID, config.CredentialsExpired)
+		sendMsgErr := s.telegramSvc.SendMessageWithOpts(credentials.UserID, answers.CredentialsExpired)
 		if sendMsgErr != nil {
 			return fmt.Errorf("telegramSvc.SendMessageWithOpts(credentialsExpired): %w", err)
 		}
@@ -130,7 +131,7 @@ func (s *svc) checkChanges(
 		return nil
 	}
 	if errors.Is(err, ierrors.ErrWrongGradesPage) {
-		sendMsgErr := s.telegramSvc.SendMessageWithOpts(credentials.UserID, config.GradesPageWrong)
+		sendMsgErr := s.telegramSvc.SendMessageWithOpts(credentials.UserID, answers.GradesPageWrong)
 		if sendMsgErr != nil {
 			return fmt.Errorf("telegramSvc.SendMessageWithOpts(gradesPageWrong): %w", err)
 		}

@@ -56,7 +56,7 @@ func (r *repo) Save(ctx context.Context, barsCredentials *domain.BarsCredentials
 	return nil
 }
 
-func (r *repo) Get(ctx context.Context, userID int64) (*domain.BarsCredentials, error) {
+func (r *repo) GetByUserID(ctx context.Context, userID int64) (*domain.BarsCredentials, error) {
 	query := `
 		SELECT 
 			user_id, 
@@ -68,6 +68,7 @@ func (r *repo) Get(ctx context.Context, userID int64) (*domain.BarsCredentials, 
 		FROM
 		    bars_credentials
 		WHERE user_id = $1
+		AND deleted_at IS NULL
 	`
 
 	dboCredential := new(dbo.BarsCredentials)
@@ -105,8 +106,7 @@ func (r *repo) Delete(ctx context.Context, userID int64) error {
 	return nil
 }
 
-// TODO нужно один метод с обогащением опциями, нужно объединить это с Get
-func (r *repo) GetAllAuthorized(ctx context.Context) ([]*domain.BarsCredentials, error) {
+func (r *repo) GetAll(ctx context.Context) ([]*domain.BarsCredentials, error) {
 	query := `
 		SELECT 
 			user_id, 

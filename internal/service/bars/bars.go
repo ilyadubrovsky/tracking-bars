@@ -46,9 +46,9 @@ func (s *svc) Authorization(ctx context.Context, credentials *domain.BarsCredent
 	defer s.mu.Unlock()
 	defer s.barsClient.Clear()
 
-	repoCredentials, err := s.barsCredentialsRepo.Get(ctx, credentials.UserID)
+	repoCredentials, err := s.barsCredentialsRepo.GetByUserID(ctx, credentials.UserID)
 	if err != nil {
-		return fmt.Errorf("barsCredentialsRepo.Get: %w", err)
+		return fmt.Errorf("barsCredentialsRepo.GetByUserID: %w", err)
 	}
 	if repoCredentials != nil {
 		return ierrors.ErrAlreadyAuth
@@ -90,13 +90,4 @@ func (s *svc) Logout(ctx context.Context, userID int64) error {
 	}
 
 	return nil
-}
-
-func (s *svc) GetAllAuthorized(ctx context.Context) ([]*domain.BarsCredentials, error) {
-	barsCredentials, err := s.barsCredentialsRepo.GetAllAuthorized(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("barsCredentialsRepo.GetAllAuthorized: %w", err)
-	}
-
-	return barsCredentials, nil
 }

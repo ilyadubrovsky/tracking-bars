@@ -1,6 +1,7 @@
 package telegram
 
 import (
+	"context"
 	"errors"
 	"fmt"
 
@@ -87,6 +88,8 @@ func (s *svc) setBotSettings() {
 
 	adminGroup.Handle("/aecho", s.handleAdminEchoCommand)
 
+	adminGroup.Handle("/asmall", s.handleAdminSendMessageAllCommand)
+
 	adminGroup.Handle("/asm", s.handleAdminSendMessageCommand)
 }
 
@@ -123,7 +126,12 @@ func (s *svc) middlewareError(targetUserID int64, err error) error {
 	if errors.As(err, &tele.ErrBlockedByUser) ||
 		errors.As(err, &tele.ErrUserIsDeactivated) ||
 		errors.As(err, &tele.ErrNotStartedByUser) {
-		// TODO удаление пользователя, чтобы больше не пытаться ему отправить что-либо
+		deleteErr := s.userSvc.Delete(context.Background(), targetUserID)
+		if deleteErr != nil {
+			log.Error().Int64("user", targetUserID).Msgf(
+				"deleting user with received err %v failed: %v", err, deleteErr,
+			)
+		}
 	}
 
 	return err
