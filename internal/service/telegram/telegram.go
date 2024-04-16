@@ -138,6 +138,8 @@ func (s *svc) middlewareError(targetUserID int64, err error) error {
 				"deleting user with received err %v failed: %v", err, deleteErr,
 			)
 		}
+		log.Info().Int64("user", targetUserID).Msgf(
+			"deleting user due to an error: %v", err)
 	}
 
 	return err
