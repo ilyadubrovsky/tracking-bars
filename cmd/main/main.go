@@ -53,10 +53,10 @@ func main() {
 		cfg.Telegram,
 	)
 	gradesChangesService := grades_changes.NewService(
-		progressTableService,
 		telegramService,
 		barsService,
 		barsCredentialsRepository,
+		progressTablesRepository,
 		cfg.Bars,
 	)
 	if err != nil {

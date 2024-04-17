@@ -24,26 +24,26 @@ import (
 )
 
 type svc struct {
-	progressTableSvc    service.ProgressTable
 	telegramSvc         service.Telegram
 	barsSvc             service.Bars
 	barsCredentialsRepo repository.BarsCredentials
+	progressTablesRepo  repository.ProgressTables
 	cfg                 config.Bars
 	stopFunc            func()
 }
 
 func NewService(
-	progressTableSvc service.ProgressTable,
 	telegramSvc service.Telegram,
 	barsSvc service.Bars,
 	barsCredentialsRepo repository.BarsCredentials,
+	progressTablesRepo repository.ProgressTables,
 	cfg config.Bars,
 ) *svc {
 	return &svc{
-		progressTableSvc:    progressTableSvc,
 		telegramSvc:         telegramSvc,
 		barsSvc:             barsSvc,
 		barsCredentialsRepo: barsCredentialsRepo,
+		progressTablesRepo:  progressTablesRepo,
 		cfg:                 cfg,
 	}
 }
@@ -155,9 +155,9 @@ func (s *svc) checkChanges(
 	}
 	progressTable.UserID = credentials.UserID
 
-	oldProgressTable, err := s.progressTableSvc.GetByUserID(ctx, credentials.UserID)
+	oldProgressTable, err := s.progressTablesRepo.GetByUserID(ctx, credentials.UserID)
 	if err != nil {
-		return fmt.Errorf("progressTableSvc.GetByUserID: %w", err)
+		return fmt.Errorf("progressTableRepo.GetByUserID: %w", err)
 	}
 
 	if oldProgressTable != nil {
@@ -186,8 +186,8 @@ func (s *svc) checkChanges(
 		}
 	}
 
-	if err = s.progressTableSvc.Save(ctx, progressTable); err != nil {
-		return fmt.Errorf("progressTableSvc.Save: %w", err)
+	if err = s.progressTablesRepo.Save(ctx, progressTable); err != nil {
+		return fmt.Errorf("progressTableRepo.Save: %w", err)
 	}
 
 	return nil
