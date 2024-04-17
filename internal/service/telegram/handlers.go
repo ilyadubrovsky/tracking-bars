@@ -167,6 +167,39 @@ func (s *svc) handleAdminSendMessageAllCommand(c tele.Context) error {
 	)
 }
 
+func (s *svc) handleAdminSendMessageAuthCommand(c tele.Context) error {
+	input := strings.SplitN(c.Text(), " ", 2)
+	if len(input) <= 1 {
+		return s.SendMessageWithOpts(c.Sender().ID, answers.AdminInvalidArgument)
+	}
+
+	logger := log.With().Int64("admin", c.Sender().ID).Logger()
+
+	barsCredentials, err := s.barsCredentialsRepo.GetAll(context.Background())
+	if err != nil {
+		return s.SendMessageWithOpts(c.Sender().ID, answers.BotError)
+	}
+
+	errCounter := 0
+	for _, barsCredential := range barsCredentials {
+		sendErr := s.SendMessageWithOpts(barsCredential.UserID, input[1])
+		if sendErr != nil {
+			errCounter++
+			logger.
+				Error().
+				Int64("receiver", barsCredential.UserID).
+				Msg("failed to send message")
+		}
+	}
+
+	return s.SendMessageWithOpts(
+		c.Sender().ID,
+		fmt.Sprintf("Разослано сообщение (успешно: %d, ошибок: %d)\n%s",
+			len(barsCredentials)-errCounter, errCounter, input[1]),
+		tele.ModeMarkdown,
+	)
+}
+
 func (s *svc) handleAdminSendMessageCommand(c tele.Context) error {
 	input := strings.SplitN(c.Text(), " ", 3)
 	if len(input) <= 2 {

@@ -99,7 +99,8 @@ func (s *svc) checkChangesWorker(credentialsChan <-chan *domain.BarsCredentials)
 
 		err := s.checkChanges(ctx, barsClient, credentials)
 		if err != nil {
-			log.Error().Int64("user", credentials.UserID).
+			log.Error().
+				Int64("user", credentials.UserID).
 				Msgf("checkChangesWorker: checkChanges: %v", err.Error())
 		}
 
@@ -205,7 +206,8 @@ func (s *svc) checkChanges(
 				telebot.ModeMarkdown,
 			)
 			if sendMsgErr != nil {
-				log.Error().Int64("user", change.UserID).
+				log.Error().
+					Int64("user", change.UserID).
 					Msg("sending user's grade change failed")
 				// TODO ретраи можно сделать, чтобы не терять изменения
 				// или прихранивать их где-то

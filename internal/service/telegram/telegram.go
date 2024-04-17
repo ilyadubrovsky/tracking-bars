@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/ilyadubrovsky/tracking-bars/internal/config"
 	"github.com/ilyadubrovsky/tracking-bars/internal/repository"
@@ -50,7 +51,8 @@ func createBot(cfg config.Telegram) (*tele.Bot, error) {
 		Token:  cfg.BotToken,
 		Poller: &tele.LongPoller{Timeout: cfg.LongPollerDelay},
 		OnError: func(err error, c tele.Context) {
-			log.Error().Fields(extractTelebotFields(c)).
+			log.Error().
+				Fields(extractTelebotFields(c)).
 				Msgf("bot.OnError: %v", err.Error())
 		},
 	}
@@ -94,6 +96,8 @@ func (s *svc) setBotSettings() {
 
 	adminGroup.Handle("/asmall", s.handleAdminSendMessageAllCommand)
 
+	adminGroup.Handle("/asmauth", s.handleAdminSendMessageAuthCommand)
+
 	adminGroup.Handle("/asm", s.handleAdminSendMessageCommand)
 
 	adminGroup.Handle("/acauth", s.handleAdminCountAuthorizedCommand)
@@ -132,14 +136,27 @@ func (s *svc) middlewareError(targetUserID int64, err error) error {
 	if errors.As(err, &tele.ErrBlockedByUser) ||
 		errors.As(err, &tele.ErrUserIsDeactivated) ||
 		errors.As(err, &tele.ErrNotStartedByUser) {
-		deleteErr := s.userSvc.Delete(context.Background(), targetUserID)
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		log.Info().
+			Int64("user", targetUserID).
+			Msgf("deleting user due to an error: %v", err)
+
+		deleteErr := s.barsSvc.Logout(ctx, targetUserID)
 		if deleteErr != nil {
-			log.Error().Int64("user", targetUserID).Msgf(
-				"deleting user with received err %v failed: %v", err, deleteErr,
-			)
+			log.Error().
+				Int64("user", targetUserID).
+				Msgf("deleting user due to an error %v failed: %v", err, deleteErr)
+			return err
 		}
-		log.Info().Int64("user", targetUserID).Msgf(
-			"deleting user due to an error: %v", err)
+
+		deleteErr = s.userSvc.Delete(ctx, targetUserID)
+		if deleteErr != nil {
+			log.Error().
+				Int64("user", targetUserID).
+				Msgf("deleting user due to an error %v failed: %v", err, deleteErr)
+			return err
+		}
 	}
 
 	return err
