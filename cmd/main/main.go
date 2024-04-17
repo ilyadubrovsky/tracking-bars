@@ -15,6 +15,7 @@ import (
 	"github.com/ilyadubrovsky/tracking-bars/internal/service/progress_table"
 	"github.com/ilyadubrovsky/tracking-bars/internal/service/telegram"
 	"github.com/ilyadubrovsky/tracking-bars/internal/service/user"
+	"github.com/jellydator/ttlcache/v3"
 	"github.com/rs/zerolog"
 )
 
@@ -37,6 +38,9 @@ func main() {
 	usersRepository := users.NewRepository(db)
 	barsCredentialsRepository := bars_credentials.NewRepository(db)
 	progressTablesRepository := progress_tables.NewRepository(db)
+	authorizationFailedRetriesCountCache := ttlcache.New[int64, int](
+		ttlcache.WithTTL[int64, int](60 * time.Minute),
+	)
 
 	userService := user.NewService(usersRepository)
 	progressTableService := progress_table.NewService(progressTablesRepository)
@@ -57,13 +61,15 @@ func main() {
 		barsService,
 		barsCredentialsRepository,
 		progressTablesRepository,
+		authorizationFailedRetriesCountCache,
 		cfg.Bars,
 	)
 	if err != nil {
 		log.Fatalf("cant initialize telegram service: %v", err)
 	}
 
-	gradesChangesService.Start()
+	go authorizationFailedRetriesCountCache.Start()
+	go gradesChangesService.Start()
 	telegramService.Start()
 
 	// TODO gracefully shutdown

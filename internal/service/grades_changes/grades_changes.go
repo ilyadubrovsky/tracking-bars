@@ -19,6 +19,7 @@ import (
 	"github.com/ilyadubrovsky/tracking-bars/internal/service"
 	"github.com/ilyadubrovsky/tracking-bars/pkg/aes"
 	"github.com/ilyadubrovsky/tracking-bars/pkg/bars"
+	"github.com/jellydator/ttlcache/v3"
 	"github.com/rs/zerolog/log"
 	"gopkg.in/telebot.v3"
 )
@@ -28,6 +29,7 @@ type svc struct {
 	barsSvc             service.Bars
 	barsCredentialsRepo repository.BarsCredentials
 	progressTablesRepo  repository.ProgressTables
+	retriesCountCache   *ttlcache.Cache[int64, int]
 	cfg                 config.Bars
 	stopFunc            func()
 }
@@ -37,6 +39,7 @@ func NewService(
 	barsSvc service.Bars,
 	barsCredentialsRepo repository.BarsCredentials,
 	progressTablesRepo repository.ProgressTables,
+	retriesCountCache *ttlcache.Cache[int64, int],
 	cfg config.Bars,
 ) *svc {
 	return &svc{
@@ -44,6 +47,7 @@ func NewService(
 		barsSvc:             barsSvc,
 		barsCredentialsRepo: barsCredentialsRepo,
 		progressTablesRepo:  progressTablesRepo,
+		retriesCountCache:   retriesCountCache,
 		cfg:                 cfg,
 	}
 }
@@ -53,7 +57,12 @@ func (s *svc) Start() {
 	s.stopFunc = cancel
 
 	jobChan := make(chan *domain.BarsCredentials)
-	go func() {
+	for i := 0; i < s.cfg.CronWorkerPoolSize; i++ {
+		log.Info().Msgf("start %d grades changes worker", i+1)
+		go s.checkChangesWorker(jobChan)
+	}
+	func() {
+		log.Info().Msg("start actual credentials sender")
 		for {
 			select {
 			case <-time.After(s.cfg.CronDelay):
@@ -65,10 +74,6 @@ func (s *svc) Start() {
 			}
 		}
 	}()
-	for i := 0; i < s.cfg.CronWorkerPoolSize; i++ {
-		log.Info().Msgf("start %d grades changes worker", i+1)
-		go s.checkChangesWorker(jobChan)
-	}
 }
 
 func (s *svc) sendActualCredentials(
@@ -116,6 +121,27 @@ func (s *svc) checkChanges(
 
 	document, err := getGradesPageDocument(ctx, barsClient, credentials.Username, decryptedPassword)
 	if errors.Is(err, bars.ErrAuthorizationFailed) {
+		// сервер барса после падений может дропать эту ошибку
+		// часто возникает, фикси ретраями
+		retriesCount := s.retriesCountCache.Get(credentials.UserID)
+		if retriesCount == nil {
+			s.retriesCountCache.Set(credentials.UserID, 1, ttlcache.DefaultTTL)
+			return nil
+		}
+
+		if retriesCount.Value() < s.cfg.AuthorizationFailedRetriesCount && !retriesCount.IsExpired() {
+			newRetriesCount := retriesCount.Value() + 1
+			s.retriesCountCache.Set(
+				credentials.UserID,
+				newRetriesCount,
+				ttlcache.DefaultTTL,
+			)
+			log.Info().
+				Int64("user", credentials.UserID).
+				Msgf("getting err authorization failed, retries %d", newRetriesCount)
+			return nil
+		}
+
 		sendMsgErr := s.telegramSvc.SendMessageWithOpts(credentials.UserID, answers.CredentialsExpired)
 		if sendMsgErr != nil {
 			return fmt.Errorf("telegramSvc.SendMessageWithOpts(credentialsExpired): %w", err)
@@ -126,8 +152,9 @@ func (s *svc) checkChanges(
 			return fmt.Errorf("barsSvc.Logout(authFailed): %w", err)
 		}
 
-		log.Info().Int64("user", credentials.UserID).
-			Msg("deleting user with failed authorization")
+		log.Info().
+			Int64("user", credentials.UserID).
+			Msg("deleting user with err authorization failed")
 		return nil
 	}
 	if errors.Is(err, ierrors.ErrWrongGradesPage) {
@@ -141,7 +168,8 @@ func (s *svc) checkChanges(
 			return fmt.Errorf("barsSvc.Delete(wrongGradesPage): %w", err)
 		}
 
-		log.Info().Int64("user", credentials.UserID).
+		log.Info().
+			Int64("user", credentials.UserID).
 			Msg("deleting user with wrong grades page")
 		return nil
 	}

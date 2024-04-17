@@ -30,9 +30,10 @@ func NewConfig() (*Config, error) {
 }
 
 type Bars struct {
-	CronDelay          time.Duration `env:"BARS_CRON_DELAY" env-default:"15m"`
-	CronWorkerPoolSize int           `env:"BARS_CRON_WORKER_POOL_SIZE" env-default:"10"`
-	EncryptionKey      string        `env:"BARS_ENCRYPTION_KEY"`
+	CronDelay                       time.Duration `env:"BARS_CRON_DELAY" env-default:"15m"`
+	CronWorkerPoolSize              int           `env:"BARS_CRON_WORKER_POOL_SIZE" env-default:"10"`
+	AuthorizationFailedRetriesCount int           `env:"BARS_AUTHORIZATION_FAILED_RETRIES_COUNT" env-default:"3"`
+	EncryptionKey                   string        `env:"BARS_ENCRYPTION_KEY"`
 }
 
 type Telegram struct {
