@@ -127,7 +127,6 @@ func (s *svc) handleAuthCommand(c tele.Context) error {
 		return s.SendMessageWithOpts(c.Sender().ID, answers.CredentialsIncorrectly)
 	}
 
-	// TODO сделать проверку оценок сразу, чтобы сразу отправлять answers.FixGrades
 	err := s.barsSvc.Authorization(ctx, &domain.BarsCredentials{
 		UserID:   c.Sender().ID,
 		Username: username,
