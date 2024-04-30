@@ -42,6 +42,7 @@ func main() {
 		ttlcache.WithTTL[int64, int](60 * time.Minute),
 	)
 
+	// TODO какой-то пиздец с зависимостями
 	userService := user.NewService(usersRepository)
 	progressTableService := progress_table.NewService(progressTablesRepository)
 	barsService := bars.NewService(
@@ -53,6 +54,7 @@ func main() {
 	telegramService, err := telegram.NewService(
 		userService,
 		barsService,
+		progressTableService,
 		barsCredentialsRepository,
 		cfg.Telegram,
 	)
