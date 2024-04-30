@@ -53,6 +53,7 @@ func main() {
 	telegramService, err := telegram.NewService(
 		userService,
 		barsService,
+		progressTableService,
 		barsCredentialsRepository,
 		cfg.Telegram,
 	)

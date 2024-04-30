@@ -17,6 +17,7 @@ import (
 type svc struct {
 	userSvc             service.User
 	barsSvc             service.Bars
+	progressTableSvc    service.ProgressTable
 	barsCredentialsRepo repository.BarsCredentials
 	bot                 *tele.Bot
 	cfg                 config.Telegram
@@ -25,6 +26,7 @@ type svc struct {
 func NewService(
 	userSvc service.User,
 	barsSvc service.Bars,
+	progressTableSvc service.ProgressTable,
 	barsCredentialsRepo repository.BarsCredentials,
 	cfg config.Telegram,
 ) (*svc, error) {
@@ -36,6 +38,7 @@ func NewService(
 	s := &svc{
 		userSvc:             userSvc,
 		barsSvc:             barsSvc,
+		progressTableSvc:    progressTableSvc,
 		barsCredentialsRepo: barsCredentialsRepo,
 		bot:                 bot,
 		cfg:                 cfg,
@@ -67,7 +70,7 @@ func createBot(cfg config.Telegram) (*tele.Bot, error) {
 
 func (s *svc) setBotSettings() {
 	// TODO в общем-то нужен ratelimiter на все эти ручки
-	s.bot.Handle(tele.OnCallback, s.handleCallback)
+	s.bot.Handle(tele.OnCallback, s.handleOnCallback)
 
 	s.bot.Handle("/start", s.handleStartCommand)
 

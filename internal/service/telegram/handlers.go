@@ -16,22 +16,75 @@ import (
 	tele "gopkg.in/telebot.v3"
 )
 
-func (s *svc) handleCallback(c tele.Context) error {
+const (
+	callbackProgressTable                        = "pt"
+	callbackProgressTableBackOption              = "back"
+	callbackProgressTableDisciplineDetailsOption = "show"
+)
+
+func (s *svc) handleOnCallback(c tele.Context) error {
 	callbackData := strings.Replace(c.Callback().Data, "\f", "", -1)
-	if callbackData[:2] != "pt" {
+	if strings.HasPrefix(callbackData, callbackProgressTable) {
+		return s.handleProgressTableCallback(c)
+	}
+
+	return s.EditMessageWithOpts(c.Sender().ID, c.Message().ID, answers.BotError)
+}
+
+func (s *svc) handleProgressTableCallback(c tele.Context) error {
+	logger := log.With().Fields(extractTelebotFields(c)).Logger()
+	ctx := logger.WithContext(context.Background())
+
+	callbackData := strings.Replace(c.Callback().Data, "\f", "", -1)
+	usefulData := strings.TrimPrefix(callbackData, callbackProgressTable)
+	if len(usefulData) == 0 {
 		return s.EditMessageWithOpts(c.Sender().ID, c.Message().ID, answers.BotError)
 	}
 
-	// TODO bars get grades request
-	//RequestID:    c.Sender().ID,
-	//IsCallback:   true,
-	//CallbackData: callbackData[2:],
-	//MessageID:    c.Message().ID,
+	progressTable, err := s.progressTableSvc.GetByUserID(ctx, c.Sender().ID)
+	if err != nil {
+		logger.Error().Msgf("handleProgressTableCallback: %v", err.Error())
+		return s.EditMessageWithOpts(c.Sender().ID, c.Message().ID, answers.BotError)
+	}
+	if progressTable == nil || len(progressTable.Disciplines) == 0 {
+		return s.EditMessageWithOpts(c.Sender().ID, c.Message().ID, answers.GradesPageUnavailable)
+	}
 
-	// if err != nil
-	//return s.EditMessageWithOpts(c.Sender().ID, c.Message().ID, answers.BotError)
+	isHideControlEventsName := true
+	if usefulData == callbackProgressTableBackOption {
+		return s.EditMessageWithOpts(
+			c.Sender().ID,
+			c.Message().ID,
+			generateDisciplineListMessage(progressTable.Disciplines),
+			tele.ModeMarkdown,
+			s.generateDisciplineListMarkup(progressTable),
+		)
+	}
 
-	return nil
+	if strings.HasPrefix(usefulData, callbackProgressTableDisciplineDetailsOption) {
+		isHideControlEventsName = false
+		usefulData = strings.TrimPrefix(usefulData, callbackProgressTableDisciplineDetailsOption)
+	}
+
+	disciplineNumber, err := strconv.Atoi(usefulData)
+	if err != nil {
+		logger.Error().Msgf("handleProgressTableCallback: %v", err.Error())
+		return s.EditMessageWithOpts(c.Sender().ID, c.Message().ID, answers.BotError)
+	}
+	if disciplineNumber > len(progressTable.Disciplines) || disciplineNumber <= 0 {
+		return s.EditMessageWithOpts(c.Sender().ID, c.Message().ID, answers.GradesPageUnavailable)
+	}
+
+	return s.EditMessageWithOpts(
+		c.Sender().ID,
+		c.Message().ID,
+		generateDisciplineInfoMessage(
+			progressTable.Disciplines[disciplineNumber-1],
+			isHideControlEventsName,
+		),
+		tele.ModeMarkdown,
+		s.generateDisciplineMarkup(disciplineNumber, isHideControlEventsName),
+	)
 }
 
 func (s *svc) handleStartCommand(c tele.Context) error {
@@ -53,7 +106,6 @@ func (s *svc) handleHelpCommand(c tele.Context) error {
 	return s.SendMessageWithOpts(c.Sender().ID, answers.Help)
 }
 
-// TODO пока не придумал че делать если /start не написал пользователь и не попал в таблицу users(
 func (s *svc) handleAuthCommand(c tele.Context) error {
 	logger := log.With().Fields(extractTelebotFields(c)).Logger()
 	ctx := logger.WithContext(context.Background())
@@ -75,6 +127,7 @@ func (s *svc) handleAuthCommand(c tele.Context) error {
 		return s.SendMessageWithOpts(c.Sender().ID, answers.CredentialsIncorrectly)
 	}
 
+	// TODO сделать проверку оценок сразу, чтобы сразу отправлять answers.FixGrades
 	err := s.barsSvc.Authorization(ctx, &domain.BarsCredentials{
 		UserID:   c.Sender().ID,
 		Username: username,
@@ -111,13 +164,27 @@ func (s *svc) handleLogoutCommand(c tele.Context) error {
 }
 
 func (s *svc) handleProgressTableCommand(c tele.Context) error {
-	//RequestID:  c.Sender().ID,
-	//IsCallback: false,
+	logger := log.With().Fields(extractTelebotFields(c)).Logger()
+	ctx := logger.WithContext(context.Background())
 
-	// TODO get progress table by bars service
-	// s.SendMessageWithOpts(c.Sender().ID, a.cfg.Responses.BotError)
+	progressTable, err := s.progressTableSvc.GetByUserID(ctx, c.Sender().ID)
+	if err != nil {
+		logger.Error().Msgf(
+			"handleProgressTableCommand: %v",
+			fmt.Errorf("progressTableSvc.GetByUserID: %w", err).Error(),
+		)
+		return s.SendMessageWithOpts(c.Sender().ID, answers.BotError)
+	}
+	if progressTable == nil || len(progressTable.Disciplines) == 0 {
+		return s.SendMessageWithOpts(c.Sender().ID, answers.GradesPageUnavailable)
+	}
 
-	return s.SendMessageWithOpts(c.Sender().ID, "Команда пока не работает.")
+	return s.SendMessageWithOpts(
+		c.Sender().ID,
+		generateDisciplineListMessage(progressTable.Disciplines),
+		tele.ModeMarkdown,
+		s.generateDisciplineListMarkup(progressTable),
+	)
 }
 
 func (s *svc) handleGithubCommand(c tele.Context) error {
@@ -250,4 +317,126 @@ func extractTelebotFields(c tele.Context) map[string]interface{} {
 		"sender":   c.Sender().ID,
 		"username": c.Sender().Username,
 	}
+}
+
+func generateDisciplineListMessage(disciplines []domain.Discipline) string {
+	var b strings.Builder
+
+	for i, discipline := range disciplines {
+		b.WriteString(fmt.Sprintf("*%d:* %s\n\n", i+1, discipline.Name))
+	}
+
+	b.WriteString("Для просмотра оценок по определённому предмету, воспользуйтесь кнопочным меню.")
+
+	return b.String()
+}
+
+func generateDisciplineInfoMessage(
+	discipline domain.Discipline,
+	isHideControlEventNames bool,
+) string {
+	var b strings.Builder
+
+	b.WriteString(fmt.Sprintf("*Название дисциплины:*\n%s\n\n", discipline.Name))
+
+	for i, ce := range discipline.ControlEvents {
+		name := ce.Name
+		if isHideControlEventNames &&
+			(!(strings.HasPrefix(ce.Name, "Балл текущего контроля") ||
+				strings.HasPrefix(ce.Name, "Итоговая оценка:") ||
+				strings.HasPrefix(ce.Name, "Промежуточная аттестация"))) {
+			name = fmt.Sprintf("КМ-%d", i+1)
+		}
+		b.WriteString(fmt.Sprintf("%s\n*Оценка:* %s\n\n", name, ce.Grade))
+	}
+
+	return b.String()
+}
+
+const buttonsCountInRowDisciplineList = 5
+
+func (s *svc) generateDisciplineListMarkup(progressTable *domain.ProgressTable) *tele.ReplyMarkup {
+	markup := s.bot.NewMarkup()
+
+	rowsCount, buttonsCountInLastRow := 0, 0
+	disciplinesCount := len(progressTable.Disciplines)
+	if disciplinesCount >= buttonsCountInRowDisciplineList {
+		remainder := disciplinesCount % buttonsCountInRowDisciplineList
+		if remainder == 0 {
+			rowsCount = disciplinesCount / buttonsCountInRowDisciplineList
+			buttonsCountInLastRow = buttonsCountInRowDisciplineList
+		} else {
+			rowsCount = disciplinesCount/buttonsCountInRowDisciplineList + 1
+			buttonsCountInLastRow = remainder
+		}
+	} else if disciplinesCount > 0 && disciplinesCount < buttonsCountInRowDisciplineList {
+		rowsCount = 1
+		buttonsCountInLastRow = disciplinesCount
+	} else {
+		markup.Inline()
+		return markup
+	}
+	rows := make([]tele.Row, 0, rowsCount)
+
+	for i := 0; i < rowsCount-1; i++ {
+		row := make([]tele.Btn, 0, buttonsCountInRowDisciplineList)
+		for j := 0; j < buttonsCountInRowDisciplineList; j++ {
+			disciplineNumber := i*buttonsCountInRowDisciplineList + j + 1
+			button := markup.Data(
+				strconv.Itoa(disciplineNumber),
+				fmt.Sprintf("pt%d", disciplineNumber),
+			)
+			row = append(row, button)
+		}
+		rows = append(rows, row)
+	}
+
+	row := make([]tele.Btn, 0, buttonsCountInLastRow)
+	for j := 0; j < buttonsCountInLastRow; j++ {
+		disciplineNumber := (rowsCount-1)*buttonsCountInRowDisciplineList + j + 1
+		button := markup.Data(
+			strconv.Itoa(disciplineNumber),
+			fmt.Sprintf("pt%d", disciplineNumber),
+		)
+		row = append(row, button)
+	}
+	rows = append(rows, row)
+
+	markup.Inline(rows...)
+
+	return markup
+}
+
+func (s *svc) generateDisciplineMarkup(
+	disciplineNumber int,
+	isHideControlEventNames bool,
+) *tele.ReplyMarkup {
+	markup := s.bot.NewMarkup()
+
+	backButton := markup.Data(
+		"←",
+		fmt.Sprintf("%s%s", callbackProgressTable, callbackProgressTableBackOption),
+	)
+	showOrHideButton := tele.Btn{}
+	if isHideControlEventNames {
+		// если isHide, значит скрываем детали и должны показать кнопку show
+		showOrHideButton = markup.Data(
+			"↓",
+			fmt.Sprintf(
+				"%s%s%d",
+				callbackProgressTable,
+				callbackProgressTableDisciplineDetailsOption,
+				disciplineNumber,
+			),
+		)
+	} else {
+		showOrHideButton = markup.Data(
+			"↑",
+			fmt.Sprintf("%s%d", callbackProgressTable, disciplineNumber),
+		)
+	}
+
+	markup.Inline([]tele.Btn{backButton, showOrHideButton})
+
+	return markup
 }
