@@ -171,6 +171,9 @@ func (s *svc) checkChanges(
 			Msg("deleting user with wrong grades page")
 		return nil
 	}
+	if err != nil {
+		return fmt.Errorf("barsSvc.GetProgressTable: %w", err)
+	}
 
 	oldProgressTable, err := s.progressTablesRepo.GetByUserID(ctx, credentials.UserID)
 	if err != nil {
