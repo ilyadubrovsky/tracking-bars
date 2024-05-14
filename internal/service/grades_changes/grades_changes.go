@@ -119,24 +119,7 @@ func (s *svc) checkChanges(
 
 	progressTable, err := s.barsSvc.GetProgressTable(ctx, credentials, barsClient)
 	if errors.Is(err, bars.ErrAuthorizationFailed) {
-		// сервер барса после падений может дропать эту ошибку
-		// часто возникает, фикси ретраями
-		retriesCount := s.retriesCountCache.Get(credentials.UserID)
-		if retriesCount == nil {
-			s.retriesCountCache.Set(credentials.UserID, 1, ttlcache.DefaultTTL)
-			return nil
-		}
-
-		if retriesCount.Value() < s.cfg.AuthorizationFailedRetriesCount && !retriesCount.IsExpired() {
-			newRetriesCount := retriesCount.Value() + 1
-			s.retriesCountCache.Set(
-				credentials.UserID,
-				newRetriesCount,
-				ttlcache.DefaultTTL,
-			)
-			log.Info().
-				Int64("user", credentials.UserID).
-				Msgf("getting err authorization failed, retries %d", newRetriesCount)
+		if s.nextRetriesCount(ctx, credentials.UserID) < s.cfg.AuthorizationFailedRetriesCount {
 			return nil
 		}
 
@@ -156,6 +139,10 @@ func (s *svc) checkChanges(
 		return nil
 	}
 	if errors.Is(err, ierrors.ErrWrongGradesPage) {
+		if s.nextRetriesCount(ctx, credentials.UserID) < s.cfg.AuthorizationFailedRetriesCount {
+			return nil
+		}
+
 		sendMsgErr := s.telegramSvc.SendMessageWithOpts(credentials.UserID, answers.GradesPageWrong)
 		if sendMsgErr != nil {
 			return fmt.Errorf("telegramSvc.SendMessageWithOpts(gradesPageWrong): %w", err)
@@ -212,6 +199,28 @@ func (s *svc) checkChanges(
 	}
 
 	return nil
+}
+
+func (s *svc) nextRetriesCount(ctx context.Context, userID int64) int {
+	// сервер барса после падений может отдавать неожидаемое поведение
+	// часто возникает, фиксим ретраями
+	retriesCount := s.retriesCountCache.Get(userID)
+	if retriesCount == nil || retriesCount.IsExpired() {
+		s.retriesCountCache.Set(userID, 1, ttlcache.DefaultTTL)
+		return 1
+	}
+
+	newRetriesCount := retriesCount.Value() + 1
+	s.retriesCountCache.Set(
+		userID,
+		newRetriesCount,
+		ttlcache.DefaultTTL,
+	)
+	log.Info().
+		Int64("user", userID).
+		Msgf("new retries count value %d", newRetriesCount)
+
+	return retriesCount.Value()
 }
 
 func (s *svc) Stop() error {
