@@ -2,18 +2,11 @@ package dbo
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
-	"time"
 
 	"github.com/ilyadubrovsky/tracking-bars/internal/domain"
 )
-
-type ProgressTable struct {
-	UserID        int64
-	ProgressTable []byte
-	CreatedAt     time.Time
-	UpdatedAt     time.Time
-}
 
 type progressTableData struct {
 	DisciplinesData []disciplineData `json:"progress_table"`
@@ -29,7 +22,7 @@ type controlEventData struct {
 	Grade string `json:"grade"`
 }
 
-func FromDomain(progressTable *domain.ProgressTable) (*ProgressTable, error) {
+func ProgressTableFromDomain(progressTable *domain.ProgressTable) ([]byte, error) {
 	data := progressTableData{
 		DisciplinesData: make([]disciplineData, len(progressTable.Disciplines)),
 	}
@@ -48,20 +41,20 @@ func FromDomain(progressTable *domain.ProgressTable) (*ProgressTable, error) {
 		return nil, fmt.Errorf("json.Marshal: %w", err)
 	}
 
-	return &ProgressTable{
-		UserID:        progressTable.UserID,
-		ProgressTable: progressTableBytes,
-	}, nil
+	return progressTableBytes, nil
 }
 
-func ToDomain(dboProgressTable *ProgressTable) (*domain.ProgressTable, error) {
+func ProgressTableToDomain(progressTableBytes []byte) (*domain.ProgressTable, error) {
+	if len(progressTableBytes) == 0 {
+		return nil, errors.New("progress table bytes is empty")
+	}
+
 	data := progressTableData{}
-	if err := json.Unmarshal(dboProgressTable.ProgressTable, &data); err != nil {
+	if err := json.Unmarshal(progressTableBytes, &data); err != nil {
 		return nil, fmt.Errorf("json.Unmarshal: %w", err)
 	}
 
 	progressTable := &domain.ProgressTable{
-		UserID:      dboProgressTable.UserID,
 		Disciplines: make([]domain.Discipline, 0, len(data.DisciplinesData)),
 	}
 	for _, dboDiscipline := range data.DisciplinesData {

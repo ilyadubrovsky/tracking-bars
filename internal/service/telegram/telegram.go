@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/ilyadubrovsky/tracking-bars/internal/config"
-	"github.com/ilyadubrovsky/tracking-bars/internal/repository"
 	"github.com/ilyadubrovsky/tracking-bars/internal/service"
 	"github.com/rs/zerolog/log"
 	tele "gopkg.in/telebot.v3"
@@ -15,19 +14,15 @@ import (
 )
 
 type svc struct {
-	userSvc             service.User
-	barsSvc             service.Bars
-	progressTableSvc    service.ProgressTable
-	barsCredentialsRepo repository.BarsCredentials
-	bot                 *tele.Bot
-	cfg                 config.Telegram
+	userSvc service.User
+	barsSvc service.Bars
+	bot     *tele.Bot
+	cfg     config.Telegram
 }
 
 func NewService(
 	userSvc service.User,
 	barsSvc service.Bars,
-	progressTableSvc service.ProgressTable,
-	barsCredentialsRepo repository.BarsCredentials,
 	cfg config.Telegram,
 ) (*svc, error) {
 	bot, err := createBot(cfg)
@@ -36,12 +31,10 @@ func NewService(
 	}
 
 	s := &svc{
-		userSvc:             userSvc,
-		barsSvc:             barsSvc,
-		progressTableSvc:    progressTableSvc,
-		barsCredentialsRepo: barsCredentialsRepo,
-		bot:                 bot,
-		cfg:                 cfg,
+		userSvc: userSvc,
+		barsSvc: barsSvc,
+		bot:     bot,
+		cfg:     cfg,
 	}
 
 	s.setBotSettings()
@@ -97,13 +90,14 @@ func (s *svc) setBotSettings() {
 
 	adminGroup.Handle("/aecho", s.handleAdminEchoCommand)
 
-	adminGroup.Handle("/asmall", s.handleAdminSendMessageAllCommand)
+	// TODO ждут доработки users service & repo
+	//adminGroup.Handle("/asmall", s.handleAdminSendMessageAllCommand)
 
-	adminGroup.Handle("/asmauth", s.handleAdminSendMessageAuthCommand)
+	//adminGroup.Handle("/asmauth", s.handleAdminSendMessageAuthCommand)
 
 	adminGroup.Handle("/asm", s.handleAdminSendMessageCommand)
 
-	adminGroup.Handle("/acauth", s.handleAdminCountAuthorizedCommand)
+	//adminGroup.Handle("/acauth", s.handleAdminCountAuthorizedCommand)
 }
 
 func (s *svc) SendMessageWithOpts(id int64, message string, opts ...interface{}) error {

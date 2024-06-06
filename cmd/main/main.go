@@ -7,12 +7,9 @@ import (
 
 	"github.com/ilyadubrovsky/tracking-bars/internal/config"
 	"github.com/ilyadubrovsky/tracking-bars/internal/database/pg"
-	"github.com/ilyadubrovsky/tracking-bars/internal/repository/bars_credentials"
-	"github.com/ilyadubrovsky/tracking-bars/internal/repository/progress_tables"
 	"github.com/ilyadubrovsky/tracking-bars/internal/repository/users"
 	"github.com/ilyadubrovsky/tracking-bars/internal/service/bars"
 	"github.com/ilyadubrovsky/tracking-bars/internal/service/grades_changes"
-	"github.com/ilyadubrovsky/tracking-bars/internal/service/progress_table"
 	"github.com/ilyadubrovsky/tracking-bars/internal/service/telegram"
 	"github.com/ilyadubrovsky/tracking-bars/internal/service/user"
 	"github.com/jellydator/ttlcache/v3"
@@ -36,33 +33,24 @@ func main() {
 	}
 
 	usersRepository := users.NewRepository(db)
-	barsCredentialsRepository := bars_credentials.NewRepository(db)
-	progressTablesRepository := progress_tables.NewRepository(db)
 	authorizationFailedRetriesCountCache := ttlcache.New[int64, int](
 		ttlcache.WithTTL[int64, int](60 * time.Minute),
 	)
 
-	// TODO какой-то пиздец с зависимостями
 	userService := user.NewService(usersRepository)
-	progressTableService := progress_table.NewService(progressTablesRepository)
 	barsService := bars.NewService(
-		progressTableService,
 		userService,
-		barsCredentialsRepository,
 		cfg.Bars,
 	)
 	telegramService, err := telegram.NewService(
 		userService,
 		barsService,
-		progressTableService,
-		barsCredentialsRepository,
 		cfg.Telegram,
 	)
 	gradesChangesService := grades_changes.NewService(
 		telegramService,
 		barsService,
-		barsCredentialsRepository,
-		progressTablesRepository,
+		userService,
 		authorizationFailedRetriesCountCache,
 		cfg.Bars,
 	)

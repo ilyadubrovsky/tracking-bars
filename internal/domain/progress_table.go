@@ -3,7 +3,6 @@ package domain
 import "fmt"
 
 type ProgressTable struct {
-	UserID      int64
 	Disciplines []Discipline
 }
 

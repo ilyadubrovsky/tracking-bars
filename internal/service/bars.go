@@ -8,11 +8,17 @@ import (
 )
 
 type Bars interface {
-	Authorization(ctx context.Context, credentials *domain.BarsCredentials) error
+	Authorization(
+		ctx context.Context,
+		userID int64,
+		username string,
+		password []byte,
+	) error
 	Logout(ctx context.Context, userID int64) error
 	GetProgressTable(
 		ctx context.Context,
-		credentials *domain.BarsCredentials,
+		username string,
+		password []byte,
 		barsClient bars.Client,
 	) (*domain.ProgressTable, error)
 }

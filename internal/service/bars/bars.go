@@ -14,7 +14,6 @@ import (
 	"github.com/ilyadubrovsky/tracking-bars/internal/config"
 	"github.com/ilyadubrovsky/tracking-bars/internal/domain"
 	ierrors "github.com/ilyadubrovsky/tracking-bars/internal/errors"
-	"github.com/ilyadubrovsky/tracking-bars/internal/repository"
 	"github.com/ilyadubrovsky/tracking-bars/internal/service"
 	"github.com/ilyadubrovsky/tracking-bars/pkg/aes"
 	"github.com/ilyadubrovsky/tracking-bars/pkg/bars"
@@ -23,81 +22,71 @@ import (
 // TODO здесь должнен быть пул клиентов, реализация с мьютексом медленная
 // нужно сбрасывать клиента через Clear() после использования перед возвращением в пул
 type svc struct {
-	progressTableSvc    service.ProgressTable
-	userSvc             service.User
-	barsCredentialsRepo repository.BarsCredentials
-	cfg                 config.Bars
+	userSvc service.User
+	cfg     config.Bars
 
 	mu         sync.Mutex
 	barsClient bars.Client
 }
 
 func NewService(
-	progressTableSvc service.ProgressTable,
 	userSvc service.User,
-	barsCredentialsRepo repository.BarsCredentials,
 	cfg config.Bars,
 ) *svc {
 	return &svc{
-		barsCredentialsRepo: barsCredentialsRepo,
-		userSvc:             userSvc,
-		progressTableSvc:    progressTableSvc,
-		cfg:                 cfg,
-		barsClient:          bars.NewClient(config.BARSRegistrationPageURL),
+		userSvc:    userSvc,
+		cfg:        cfg,
+		barsClient: bars.NewClient(config.BARSRegistrationPageURL),
 	}
 }
 
-func (s *svc) Authorization(ctx context.Context, credentials *domain.BarsCredentials) error {
+func (s *svc) Authorization(
+	ctx context.Context,
+	userID int64,
+	username string,
+	password []byte,
+) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	defer s.barsClient.Clear()
 
-	repoCredentials, err := s.barsCredentialsRepo.GetByUserID(ctx, credentials.UserID)
+	user, err := s.userSvc.User(ctx, userID)
 	if err != nil {
-		return fmt.Errorf("barsCredentialsRepo.GetByUserID: %w", err)
+		return fmt.Errorf("barsCredentialsRepo.User: %w", err)
 	}
-	if repoCredentials != nil {
+	if user != nil && user.BarsCredentials != nil {
 		return ierrors.ErrAlreadyAuth
 	}
 
-	err = s.userSvc.Save(ctx, &domain.User{ID: credentials.UserID})
-	if err != nil {
-		return fmt.Errorf("userSvc.Save: %w", err)
-	}
-
-	progressTable, err := s.GetProgressTable(ctx, credentials, s.barsClient)
+	progressTable, err := s.GetProgressTable(ctx, username, password, s.barsClient)
 	if err != nil {
 		return fmt.Errorf("svc.GetProgressTable: %w", err)
 	}
 
-	encryptedPassword, err := aes.Encrypt([]byte(s.cfg.EncryptionKey), credentials.Password)
+	encryptedPassword, err := aes.Encrypt([]byte(s.cfg.EncryptionKey), password)
 	if err != nil {
 		return fmt.Errorf("aes.Encrypt (password): %w", err)
 	}
-	credentials.Password = encryptedPassword
 
-	err = s.barsCredentialsRepo.Save(ctx, credentials)
+	err = s.userSvc.Save(ctx, &domain.User{
+		ID:            userID,
+		ProgressTable: progressTable,
+		BarsCredentials: &domain.BarsCredentials{
+			Username: username,
+			Password: encryptedPassword,
+		},
+	})
 	if err != nil {
-		return fmt.Errorf("barsCredentialsRepo.Save: %w", err)
-	}
-
-	err = s.progressTableSvc.Save(ctx, progressTable)
-	if err != nil {
-		return fmt.Errorf("progressTableSvc.Save: %w", err)
+		return fmt.Errorf("userSvc.Save: %w", err)
 	}
 
 	return nil
 }
 
 func (s *svc) Logout(ctx context.Context, userID int64) error {
-	err := s.progressTableSvc.Delete(ctx, userID)
+	err := s.userSvc.Delete(ctx, userID)
 	if err != nil {
-		return fmt.Errorf("progressTableSvc.Delete: %w", err)
-	}
-
-	err = s.barsCredentialsRepo.Delete(ctx, userID)
-	if err != nil {
-		return fmt.Errorf("barsCredentialsRepo.Delete: %w", err)
+		return fmt.Errorf("userSvc.Delete: %w", err)
 	}
 
 	return nil
@@ -105,14 +94,15 @@ func (s *svc) Logout(ctx context.Context, userID int64) error {
 
 func (s *svc) GetProgressTable(
 	ctx context.Context,
-	credentials *domain.BarsCredentials,
+	username string,
+	password []byte,
 	barsClient bars.Client,
 ) (*domain.ProgressTable, error) {
 	if barsClient == nil {
 		barsClient = bars.NewClient(config.BARSRegistrationPageURL)
 	}
 
-	err := barsClient.Authorization(ctx, credentials.Username, string(credentials.Password))
+	err := barsClient.Authorization(ctx, username, string(password))
 	if err != nil {
 		return nil, fmt.Errorf("barsClient.Authorization: %w", err)
 	}
@@ -126,7 +116,6 @@ func (s *svc) GetProgressTable(
 	if err != nil {
 		return nil, fmt.Errorf("extractProgressTable: %w", err)
 	}
-	progressTable.UserID = credentials.UserID
 
 	return progressTable, nil
 }
