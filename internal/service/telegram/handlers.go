@@ -172,6 +172,10 @@ func (s *svc) handleProgressTableCommand(c tele.Context) error {
 		)
 		return s.SendMessageWithOpts(c.Sender().ID, answers.BotError)
 	}
+	if user == nil || user.BarsCredentials == nil {
+		return s.SendMessageWithOpts(c.Sender().ID, answers.ClientNotAuthorized)
+	}
+
 	progressTable := user.ProgressTable
 	if progressTable == nil || len(progressTable.Disciplines) == 0 {
 		return s.SendMessageWithOpts(c.Sender().ID, answers.GradesPageUnavailable)
