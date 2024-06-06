@@ -175,7 +175,8 @@ func (r *repo) Users(ctx context.Context) ([]*domain.User, error) {
 	  ON u.id = bc.user_id
 	LEFT JOIN progress_tables AS pt
 	  ON u.id = pt.user_id
-	WHERE u.deleted_at IS NULL;
+	WHERE u.deleted_at IS NULL
+	AND bc.deleted_at iS NULL;
 	`
 
 	rows, err := r.db.Query(ctx, query)

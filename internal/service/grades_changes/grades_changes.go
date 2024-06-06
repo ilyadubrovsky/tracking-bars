@@ -48,10 +48,10 @@ func (s *svc) Start() {
 	ctx, cancel := context.WithCancel(context.Background())
 	s.stopFunc = cancel
 
-	jobChan := make(chan *domain.User)
+	usersChan := make(chan *domain.User)
 	for i := 0; i < s.cfg.CronWorkerPoolSize; i++ {
 		log.Info().Msgf("start %d grades changes worker", i+1)
-		go s.checkChangesWorker(jobChan)
+		go s.checkChangesWorker(usersChan)
 	}
 	func() {
 		log.Info().Msg("start actual credentials sender")
@@ -59,9 +59,9 @@ func (s *svc) Start() {
 			select {
 			case <-time.After(s.cfg.CronDelay):
 				log.Info().Msg("sending actual credentials")
-				s.sendActualCredentials(ctx, jobChan)
+				s.sendActualCredentials(ctx, usersChan)
 			case <-ctx.Done():
-				close(jobChan)
+				close(usersChan)
 				return
 			}
 		}
@@ -97,7 +97,7 @@ func (s *svc) checkChangesWorker(usersChan <-chan *domain.User) {
 				return
 			}
 
-			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 			defer cancel()
 
 			err := s.checkChanges(ctx, barsClient, user)
@@ -108,6 +108,8 @@ func (s *svc) checkChangesWorker(usersChan <-chan *domain.User) {
 				return
 			}
 		}()
+		// попытка делать запросы реже, чтобы не долбить БАРС
+		time.Sleep(s.cfg.CronWorkerDelay)
 	}
 }
 
@@ -129,7 +131,12 @@ func (s *svc) checkChanges(
 		barsClient,
 	)
 	if errors.Is(err, bars.ErrAuthorizationFailed) {
-		if s.nextRetriesCount(ctx, user.ID) < s.cfg.AuthorizationFailedRetriesCount {
+		retriesCount := s.nextRetriesCount(user.ID)
+		if retriesCount < s.cfg.AuthorizationFailedRetriesCount {
+			log.Info().
+				Int64("user", user.ID).
+				Str("reason", bars.ErrAuthorizationFailed.Error()).
+				Msgf("new retries count value <%d>", retriesCount)
 			return nil
 		}
 
@@ -149,7 +156,12 @@ func (s *svc) checkChanges(
 		return nil
 	}
 	if errors.Is(err, ierrors.ErrWrongGradesPage) {
-		if s.nextRetriesCount(ctx, user.ID) < s.cfg.AuthorizationFailedRetriesCount {
+		retriesCount := s.nextRetriesCount(user.ID)
+		if retriesCount < s.cfg.AuthorizationFailedRetriesCount {
+			log.Info().
+				Int64("user", user.ID).
+				Str("reason", ierrors.ErrWrongGradesPage.Error()).
+				Msgf("new retries count value <%d>", retriesCount)
 			return nil
 		}
 
@@ -207,7 +219,7 @@ func (s *svc) checkChanges(
 	return nil
 }
 
-func (s *svc) nextRetriesCount(ctx context.Context, userID int64) int {
+func (s *svc) nextRetriesCount(userID int64) int {
 	// сервер барса после падений может отдавать неожидаемое поведение
 	// часто возникает, фиксим ретраями
 	retriesCount := s.retriesCountCache.Get(userID)
@@ -222,9 +234,6 @@ func (s *svc) nextRetriesCount(ctx context.Context, userID int64) int {
 		newRetriesCount,
 		ttlcache.DefaultTTL,
 	)
-	log.Info().
-		Int64("user", userID).
-		Msgf("new retries count value %d", newRetriesCount)
 
 	return retriesCount.Value()
 }
