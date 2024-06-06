@@ -41,11 +41,13 @@ func (s *svc) handleProgressTableCallback(c tele.Context) error {
 		return s.EditMessageWithOpts(c.Sender().ID, c.Message().ID, answers.BotError)
 	}
 
-	progressTable, err := s.progressTableSvc.GetByUserID(ctx, c.Sender().ID)
+	user, err := s.userSvc.User(ctx, c.Sender().ID)
 	if err != nil {
 		logger.Error().Msgf("handleProgressTableCallback: %v", err.Error())
 		return s.EditMessageWithOpts(c.Sender().ID, c.Message().ID, answers.BotError)
 	}
+
+	progressTable := user.ProgressTable
 	if progressTable == nil || len(progressTable.Disciplines) == 0 {
 		return s.EditMessageWithOpts(c.Sender().ID, c.Message().ID, answers.GradesPageUnavailable)
 	}
@@ -71,7 +73,7 @@ func (s *svc) handleProgressTableCallback(c tele.Context) error {
 		logger.Error().Msgf("handleProgressTableCallback: %v", err.Error())
 		return s.EditMessageWithOpts(c.Sender().ID, c.Message().ID, answers.BotError)
 	}
-	if disciplineNumber > len(progressTable.Disciplines) || disciplineNumber <= 0 {
+	if disciplineNumber > len(user.ProgressTable.Disciplines) || disciplineNumber <= 0 {
 		return s.EditMessageWithOpts(c.Sender().ID, c.Message().ID, answers.GradesPageUnavailable)
 	}
 
@@ -79,7 +81,7 @@ func (s *svc) handleProgressTableCallback(c tele.Context) error {
 		c.Sender().ID,
 		c.Message().ID,
 		generateDisciplineInfoMessage(
-			progressTable.Disciplines[disciplineNumber-1],
+			user.ProgressTable.Disciplines[disciplineNumber-1],
 			isHideControlEventsName,
 		),
 		tele.ModeMarkdown,
@@ -127,11 +129,7 @@ func (s *svc) handleAuthCommand(c tele.Context) error {
 		return s.SendMessageWithOpts(c.Sender().ID, answers.CredentialsIncorrectly)
 	}
 
-	err := s.barsSvc.Authorization(ctx, &domain.BarsCredentials{
-		UserID:   c.Sender().ID,
-		Username: username,
-		Password: []byte(password),
-	})
+	err := s.barsSvc.Authorization(ctx, c.Sender().ID, username, []byte(password))
 	switch {
 	case errors.Is(err, ierrors.ErrWrongGradesPage):
 		return s.SendMessageWithOpts(c.Sender().ID, answers.GradesPageWrong)
@@ -166,14 +164,15 @@ func (s *svc) handleProgressTableCommand(c tele.Context) error {
 	logger := log.With().Fields(extractTelebotFields(c)).Logger()
 	ctx := logger.WithContext(context.Background())
 
-	progressTable, err := s.progressTableSvc.GetByUserID(ctx, c.Sender().ID)
+	user, err := s.userSvc.User(ctx, c.Sender().ID)
 	if err != nil {
 		logger.Error().Msgf(
 			"handleProgressTableCommand: %v",
-			fmt.Errorf("progressTableSvc.GetByUserID: %w", err).Error(),
+			fmt.Errorf("progressTableSvc.User: %w", err).Error(),
 		)
 		return s.SendMessageWithOpts(c.Sender().ID, answers.BotError)
 	}
+	progressTable := user.ProgressTable
 	if progressTable == nil || len(progressTable.Disciplines) == 0 {
 		return s.SendMessageWithOpts(c.Sender().ID, answers.GradesPageUnavailable)
 	}
@@ -211,7 +210,7 @@ func (s *svc) handleAdminSendMessageAllCommand(c tele.Context) error {
 
 	logger := log.With().Int64("admin", c.Sender().ID).Logger()
 
-	users, err := s.userSvc.GetAll(context.Background())
+	users, err := s.userSvc.Users(context.Background())
 	if err != nil {
 		return s.SendMessageWithOpts(c.Sender().ID, answers.BotError)
 	}
@@ -241,19 +240,19 @@ func (s *svc) handleAdminSendMessageAuthCommand(c tele.Context) error {
 
 	logger := log.With().Int64("admin", c.Sender().ID).Logger()
 
-	barsCredentials, err := s.barsCredentialsRepo.GetAll(context.Background())
+	users, err := s.userSvc.Users(context.Background())
 	if err != nil {
 		return s.SendMessageWithOpts(c.Sender().ID, answers.BotError)
 	}
 
 	errCounter := 0
-	for _, barsCredential := range barsCredentials {
-		sendErr := s.SendMessageWithOpts(barsCredential.UserID, input[1])
+	for _, user := range users {
+		sendErr := s.SendMessageWithOpts(user.ID, input[1])
 		if sendErr != nil {
 			errCounter++
 			logger.
 				Error().
-				Int64("receiver", barsCredential.UserID).
+				Int64("receiver", user.ID).
 				Msg("failed to send message")
 		}
 	}
@@ -261,7 +260,7 @@ func (s *svc) handleAdminSendMessageAuthCommand(c tele.Context) error {
 	return s.SendMessageWithOpts(
 		c.Sender().ID,
 		fmt.Sprintf("Разослано сообщение (успешно: %d, ошибок: %d)\n%s",
-			len(barsCredentials)-errCounter, errCounter, input[1]),
+			len(users)-errCounter, errCounter, input[1]),
 		tele.ModeMarkdown,
 	)
 }
@@ -287,6 +286,8 @@ func (s *svc) handleAdminSendMessageCommand(c tele.Context) error {
 			userID, input[2]), tele.ModeMarkdown)
 }
 
+// TODO
+/*
 func (s *svc) handleAdminCountAuthorizedCommand(c tele.Context) error {
 	count, err := s.barsCredentialsRepo.Count(context.Background())
 	if err != nil {
@@ -298,6 +299,7 @@ func (s *svc) handleAdminCountAuthorizedCommand(c tele.Context) error {
 		fmt.Sprintf("Количество авторизованных: %d", count),
 	)
 }
+*/
 
 func (s *svc) handleFixGradesCommand(c tele.Context) error {
 	return s.SendMessageWithOpts(c.Sender().ID, answers.FixGrades, tele.ModeMarkdown)

@@ -31,7 +31,8 @@ func NewConfig() (*Config, error) {
 
 type Bars struct {
 	CronDelay                       time.Duration `env:"BARS_CRON_DELAY" env-default:"15m"`
-	CronWorkerPoolSize              int           `env:"BARS_CRON_WORKER_POOL_SIZE" env-default:"10"`
+	CronWorkerDelay                 time.Duration `env:"BARS_CRON_WORKER_DELAY" env-default:"10s"`
+	CronWorkerPoolSize              int           `env:"BARS_CRON_WORKER_POOL_SIZE" env-default:"5"`
 	AuthorizationFailedRetriesCount int           `env:"BARS_AUTHORIZATION_FAILED_RETRIES_COUNT" env-default:"3"`
 	EncryptionKey                   string        `env:"BARS_ENCRYPTION_KEY"`
 }

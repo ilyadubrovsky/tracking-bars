@@ -11,7 +11,6 @@ import (
 	"github.com/ilyadubrovsky/tracking-bars/internal/config/answers"
 	"github.com/ilyadubrovsky/tracking-bars/internal/domain"
 	ierrors "github.com/ilyadubrovsky/tracking-bars/internal/errors"
-	"github.com/ilyadubrovsky/tracking-bars/internal/repository"
 	"github.com/ilyadubrovsky/tracking-bars/internal/service"
 	"github.com/ilyadubrovsky/tracking-bars/pkg/aes"
 	"github.com/ilyadubrovsky/tracking-bars/pkg/bars"
@@ -21,30 +20,27 @@ import (
 )
 
 type svc struct {
-	telegramSvc         service.Telegram
-	barsSvc             service.Bars
-	barsCredentialsRepo repository.BarsCredentials
-	progressTablesRepo  repository.ProgressTables
-	retriesCountCache   *ttlcache.Cache[int64, int]
-	cfg                 config.Bars
-	stopFunc            func()
+	telegramSvc       service.Telegram
+	barsSvc           service.Bars
+	userSvc           service.User
+	retriesCountCache *ttlcache.Cache[int64, int]
+	cfg               config.Bars
+	stopFunc          func()
 }
 
 func NewService(
 	telegramSvc service.Telegram,
 	barsSvc service.Bars,
-	barsCredentialsRepo repository.BarsCredentials,
-	progressTablesRepo repository.ProgressTables,
+	userSvc service.User,
 	retriesCountCache *ttlcache.Cache[int64, int],
 	cfg config.Bars,
 ) *svc {
 	return &svc{
-		telegramSvc:         telegramSvc,
-		barsSvc:             barsSvc,
-		barsCredentialsRepo: barsCredentialsRepo,
-		progressTablesRepo:  progressTablesRepo,
-		retriesCountCache:   retriesCountCache,
-		cfg:                 cfg,
+		telegramSvc:       telegramSvc,
+		barsSvc:           barsSvc,
+		userSvc:           userSvc,
+		retriesCountCache: retriesCountCache,
+		cfg:               cfg,
 	}
 }
 
@@ -52,10 +48,10 @@ func (s *svc) Start() {
 	ctx, cancel := context.WithCancel(context.Background())
 	s.stopFunc = cancel
 
-	jobChan := make(chan *domain.BarsCredentials)
+	usersChan := make(chan *domain.User)
 	for i := 0; i < s.cfg.CronWorkerPoolSize; i++ {
 		log.Info().Msgf("start %d grades changes worker", i+1)
-		go s.checkChangesWorker(jobChan)
+		go s.checkChangesWorker(usersChan)
 	}
 	func() {
 		log.Info().Msg("start actual credentials sender")
@@ -63,9 +59,9 @@ func (s *svc) Start() {
 			select {
 			case <-time.After(s.cfg.CronDelay):
 				log.Info().Msg("sending actual credentials")
-				s.sendActualCredentials(ctx, jobChan)
+				s.sendActualCredentials(ctx, usersChan)
 			case <-ctx.Done():
-				close(jobChan)
+				close(usersChan)
 				return
 			}
 		}
@@ -74,87 +70,113 @@ func (s *svc) Start() {
 
 func (s *svc) sendActualCredentials(
 	ctx context.Context,
-	credentialsChan chan<- *domain.BarsCredentials,
+	usersChan chan<- *domain.User,
 ) {
-	barsCredentials, err := s.barsCredentialsRepo.GetAll(ctx)
+	users, err := s.userSvc.Users(ctx)
 	if err != nil {
-		err = fmt.Errorf("barsCredentialsRepo.GetAll: %w", err)
+		err = fmt.Errorf("barsCredentialsRepo.Users: %w", err)
 		log.Error().Msgf("sendActualCredentials: %v", err.Error())
 		return
 	}
 
-	for _, barsCredential := range barsCredentials {
-		credentialsChan <- barsCredential
+	for _, user := range users {
+		usersChan <- user
 	}
 }
 
-func (s *svc) checkChangesWorker(credentialsChan <-chan *domain.BarsCredentials) {
+func (s *svc) checkChangesWorker(usersChan <-chan *domain.User) {
 	barsClient := bars.NewClient(config.BARSRegistrationPageURL)
-	for credentials := range credentialsChan {
-		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	for user := range usersChan {
+		func() {
+			defer barsClient.Clear()
 
-		err := s.checkChanges(ctx, barsClient, credentials)
-		if err != nil {
-			log.Error().
-				Int64("user", credentials.UserID).
-				Msgf("checkChangesWorker: checkChanges: %v", err.Error())
-		}
+			if user.BarsCredentials == nil {
+				log.Error().
+					Int64("user", user.ID).
+					Msg("checkChangesWorker: received user with empty bars credentials")
+				return
+			}
 
-		barsClient.Clear()
-		cancel()
+			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+			defer cancel()
+
+			err := s.checkChanges(ctx, barsClient, user)
+			if err != nil {
+				log.Error().
+					Int64("user", user.ID).
+					Msgf("checkChangesWorker: checkChanges: %v", err.Error())
+				return
+			}
+		}()
+		// попытка делать запросы реже, чтобы не долбить БАРС
+		time.Sleep(s.cfg.CronWorkerDelay)
 	}
 }
 
 func (s *svc) checkChanges(
 	ctx context.Context,
 	barsClient bars.Client,
-	credentials *domain.BarsCredentials,
+	user *domain.User,
 ) error {
 	// TODO в теории могут быть проблемы с тем, что пользователь мог разлогиниться за время обхода
-	decryptedPassword, err := aes.Decrypt([]byte(s.cfg.EncryptionKey), credentials.Password)
+	decryptedPassword, err := aes.Decrypt([]byte(s.cfg.EncryptionKey), user.BarsCredentials.Password)
 	if err != nil {
 		return fmt.Errorf("aes.Decrypt: %w", err)
 	}
-	credentials.Password = []byte(decryptedPassword)
 
-	progressTable, err := s.barsSvc.GetProgressTable(ctx, credentials, barsClient)
+	progressTable, err := s.barsSvc.GetProgressTable(
+		ctx,
+		user.BarsCredentials.Username,
+		[]byte(decryptedPassword),
+		barsClient,
+	)
 	if errors.Is(err, bars.ErrAuthorizationFailed) {
-		if s.nextRetriesCount(ctx, credentials.UserID) < s.cfg.AuthorizationFailedRetriesCount {
+		retriesCount := s.nextRetriesCount(user.ID)
+		if retriesCount < s.cfg.AuthorizationFailedRetriesCount {
+			log.Info().
+				Int64("user", user.ID).
+				Str("reason", bars.ErrAuthorizationFailed.Error()).
+				Msgf("new retries count value <%d>", retriesCount)
 			return nil
 		}
 
-		sendMsgErr := s.telegramSvc.SendMessageWithOpts(credentials.UserID, answers.CredentialsExpired)
+		sendMsgErr := s.telegramSvc.SendMessageWithOpts(user.ID, answers.CredentialsExpired)
 		if sendMsgErr != nil {
 			return fmt.Errorf("telegramSvc.SendMessageWithOpts(credentialsExpired): %w", err)
 		}
 
-		deleteErr := s.barsSvc.Logout(ctx, credentials.UserID)
+		deleteErr := s.barsSvc.Logout(ctx, user.ID)
 		if deleteErr != nil {
 			return fmt.Errorf("barsSvc.Logout(authFailed): %w", err)
 		}
 
 		log.Info().
-			Int64("user", credentials.UserID).
+			Int64("user", user.ID).
 			Msg("deleting user with err authorization failed")
 		return nil
 	}
 	if errors.Is(err, ierrors.ErrWrongGradesPage) {
-		if s.nextRetriesCount(ctx, credentials.UserID) < s.cfg.AuthorizationFailedRetriesCount {
+		retriesCount := s.nextRetriesCount(user.ID)
+		if retriesCount < s.cfg.AuthorizationFailedRetriesCount {
+			log.Info().
+				Int64("user", user.ID).
+				Str("reason", ierrors.ErrWrongGradesPage.Error()).
+				Msgf("new retries count value <%d>", retriesCount)
 			return nil
 		}
 
-		sendMsgErr := s.telegramSvc.SendMessageWithOpts(credentials.UserID, answers.GradesPageWrong)
+		sendMsgErr := s.telegramSvc.SendMessageWithOpts(user.ID, answers.GradesPageWrong)
 		if sendMsgErr != nil {
 			return fmt.Errorf("telegramSvc.SendMessageWithOpts(gradesPageWrong): %w", err)
 		}
 
-		deleteErr := s.barsSvc.Logout(ctx, credentials.UserID)
+		deleteErr := s.barsSvc.Logout(ctx, user.ID)
 		if deleteErr != nil {
 			return fmt.Errorf("barsSvc.Delete(wrongGradesPage): %w", err)
 		}
 
 		log.Info().
-			Int64("user", credentials.UserID).
+			Int64("user", user.ID).
 			Msg("deleting user with wrong grades page")
 		return nil
 	}
@@ -162,13 +184,8 @@ func (s *svc) checkChanges(
 		return fmt.Errorf("barsSvc.GetProgressTable: %w", err)
 	}
 
-	oldProgressTable, err := s.progressTablesRepo.GetByUserID(ctx, credentials.UserID)
-	if err != nil {
-		return fmt.Errorf("progressTableRepo.GetByUserID: %w", err)
-	}
-
-	if oldProgressTable != nil {
-		changes, err := compareProgressTables(progressTable, oldProgressTable)
+	if user.ProgressTable != nil {
+		changes, err := compareProgressTables(user.ID, progressTable, user.ProgressTable)
 		if err != nil && !errors.Is(err, ierrors.ErrProgressTableStructChanged) {
 			return fmt.Errorf("compareProgressTables: %w", err)
 		}
@@ -178,7 +195,7 @@ func (s *svc) checkChanges(
 
 		for _, change := range changes {
 			sendMsgErr := s.telegramSvc.SendMessageWithOpts(
-				credentials.UserID,
+				user.ID,
 				change.String(),
 				// TODO от зависимости телебота нужно избавиться
 				telebot.ModeMarkdown,
@@ -194,14 +211,15 @@ func (s *svc) checkChanges(
 		}
 	}
 
-	if err = s.progressTablesRepo.Save(ctx, progressTable); err != nil {
-		return fmt.Errorf("progressTableRepo.Save: %w", err)
+	user.ProgressTable = progressTable
+	if err = s.userSvc.Save(ctx, user); err != nil {
+		return fmt.Errorf("userSvc.Save: %w", err)
 	}
 
 	return nil
 }
 
-func (s *svc) nextRetriesCount(ctx context.Context, userID int64) int {
+func (s *svc) nextRetriesCount(userID int64) int {
 	// сервер барса после падений может отдавать неожидаемое поведение
 	// часто возникает, фиксим ретраями
 	retriesCount := s.retriesCountCache.Get(userID)
@@ -216,9 +234,6 @@ func (s *svc) nextRetriesCount(ctx context.Context, userID int64) int {
 		newRetriesCount,
 		ttlcache.DefaultTTL,
 	)
-	log.Info().
-		Int64("user", userID).
-		Msgf("new retries count value %d", newRetriesCount)
 
 	return retriesCount.Value()
 }
@@ -233,6 +248,7 @@ func (s *svc) Stop() error {
 }
 
 func compareProgressTables(
+	userID int64,
 	newProgressTable *domain.ProgressTable,
 	oldProgressTable *domain.ProgressTable,
 ) ([]*domain.GradeChange, error) {
@@ -259,7 +275,7 @@ func compareProgressTables(
 			if controlEvent.Grade != oldControlEvent.Grade &&
 				!strings.HasPrefix(controlEvent.Name, "Балл текущего контроля") {
 				changes = append(changes, &domain.GradeChange{
-					UserID:       newProgressTable.UserID,
+					UserID:       userID,
 					Discipline:   discipline.Name,
 					ControlEvent: controlEvent.Name,
 					OldGrade:     oldControlEvent.Grade,

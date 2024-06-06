@@ -29,19 +29,19 @@ func (s *svc) Save(ctx context.Context, user *domain.User) error {
 	return nil
 }
 
-func (s *svc) GetByUserID(ctx context.Context, userID int64) (*domain.User, error) {
-	user, err := s.usersRepository.GetByUserID(ctx, userID)
+func (s *svc) User(ctx context.Context, userID int64) (*domain.User, error) {
+	user, err := s.usersRepository.User(ctx, userID)
 	if err != nil {
-		return nil, fmt.Errorf("usersRepository.GetByUserID: %w", err)
+		return nil, fmt.Errorf("usersRepository.User: %w", err)
 	}
 
 	return user, nil
 }
 
-func (s *svc) GetAll(ctx context.Context) ([]*domain.User, error) {
-	users, err := s.usersRepository.GetAll(ctx)
+func (s *svc) Users(ctx context.Context) ([]*domain.User, error) {
+	users, err := s.usersRepository.Users(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("usersRepository.GetAll: %w", err)
+		return nil, fmt.Errorf("usersRepository.Users: %w", err)
 	}
 
 	return users, nil
