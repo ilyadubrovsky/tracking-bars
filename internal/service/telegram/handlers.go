@@ -129,6 +129,7 @@ func (s *svc) handleAuthCommand(c tele.Context) error {
 		return s.SendMessageWithOpts(c.Sender().ID, answers.CredentialsIncorrectly)
 	}
 
+	// TODO в будущем нужно ввести проверку на то, что нет пользователя с таким username
 	err := s.barsSvc.Authorization(ctx, c.Sender().ID, username, []byte(password))
 	switch {
 	case errors.Is(err, ierrors.ErrWrongGradesPage):
