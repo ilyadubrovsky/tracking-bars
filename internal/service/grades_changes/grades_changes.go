@@ -204,8 +204,7 @@ func (s *svc) checkChanges(
 				log.Error().
 					Int64("user", change.UserID).
 					Msg("sending user's grade change failed")
-				// TODO ретраи можно сделать, чтобы не терять изменения
-				// или прихранивать их где-то
+				// TODO реализовать outbox паттерн, чтобы не терять изменения
 				continue
 			}
 		}
