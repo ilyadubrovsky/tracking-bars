@@ -12,13 +12,13 @@ import (
 )
 
 const (
-	UsernameFormValueKey = "UserName"
-	PasswordFormValueKey = "Password"
+	FormValueKeyUsername = "UserName"
+	FormValueKeyPassword = "Password"
 )
 
 const (
-	AuthBarsCookieName  = "auth_bars"
-	SessionIDCookieName = "ASP.NET_SessionId"
+	CookieNameAuthBars  = "auth_bars"
+	CookieNameSessionID = "ASP.NET_SessionId"
 )
 
 var (
@@ -46,8 +46,8 @@ func NewClient(registrationURL string) Client {
 
 func (c *client) Authorization(ctx context.Context, username, password string) error {
 	data := url.Values{
-		UsernameFormValueKey: {username},
-		PasswordFormValueKey: {password},
+		FormValueKeyUsername: {username},
+		FormValueKeyPassword: {password},
 	}
 
 	request, err := http.NewRequestWithContext(
@@ -112,7 +112,7 @@ func (c *client) isAuthorized(response *http.Response) bool {
 	cookies := response.Request.Cookies()
 
 	for _, cookie := range cookies {
-		if cookie.Name == AuthBarsCookieName || cookie.Name == SessionIDCookieName {
+		if cookie.Name == CookieNameAuthBars || cookie.Name == CookieNameSessionID {
 			return true
 		}
 	}
