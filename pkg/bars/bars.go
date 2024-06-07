@@ -11,8 +11,18 @@ import (
 	"strings"
 )
 
+const (
+	UsernameFormValueKey = "UserName"
+	PasswordFormValueKey = "Password"
+)
+
+const (
+	AuthBarsCookieName  = "auth_bars"
+	SessionIDCookieName = "ASP.NET_SessionId"
+)
+
 var (
-	ErrAuthorizationFailed = errors.New("authorization in BARS has not been completed")
+	ErrAuthorizationFailed = errors.New("authorization in BARS failed")
 )
 
 type Client interface {
@@ -35,15 +45,9 @@ func NewClient(registrationURL string) Client {
 }
 
 func (c *client) Authorization(ctx context.Context, username, password string) error {
-	verificationToken, err := c.getVerificationToken(ctx)
-	if err != nil {
-		return fmt.Errorf("getVerificationToken: %w", err)
-	}
-
 	data := url.Values{
-		"__RequestVerificationToken": {verificationToken},
-		"UserName":                   {username},
-		"Password":                   {password},
+		UsernameFormValueKey: {username},
+		PasswordFormValueKey: {password},
 	}
 
 	request, err := http.NewRequestWithContext(
@@ -79,6 +83,7 @@ func (c *client) Authorization(ctx context.Context, username, password string) e
 	return nil
 }
 
+// TODO кажется не универсальная штука, надо переделывать хедеры эти...
 func (c *client) MakeRequest(ctx context.Context, method string, url string, body io.Reader) (*http.Response, error) {
 	request, err := http.NewRequestWithContext(ctx, method, url, body)
 	if err != nil {
@@ -96,35 +101,18 @@ func (c *client) MakeRequest(ctx context.Context, method string, url string, bod
 	return response, nil
 }
 
-// Clear очищает данные внутри клиента, нужно делать перед каждой новой сессией
 // TODO наверное, можно делать более эффективно
+// Clear очищает данные внутри клиента, нужно делать перед каждой новой сессией
 func (c *client) Clear() {
 	jar, _ := cookiejar.New(nil)
 	c.httpClient.Jar = jar
-}
-
-func (c *client) getVerificationToken(ctx context.Context) (string, error) {
-	response, err := c.MakeRequest(ctx, http.MethodPost, c.registrationURL, nil)
-	if err != nil {
-		return "", fmt.Errorf("MakeRequest: %w", err)
-	}
-
-	cookies := response.Cookies()
-
-	for _, cookie := range cookies {
-		if cookie.Name == "__RequestVerificationToken_L2JhcnNfd2Vi0" {
-			return cookie.Value, nil
-		}
-	}
-
-	return "", errors.New("verification token was not provided by BARS")
 }
 
 func (c *client) isAuthorized(response *http.Response) bool {
 	cookies := response.Request.Cookies()
 
 	for _, cookie := range cookies {
-		if cookie.Name == "auth_bars" || cookie.Name == "ASP.NET_SessionId" {
+		if cookie.Name == AuthBarsCookieName || cookie.Name == SessionIDCookieName {
 			return true
 		}
 	}
