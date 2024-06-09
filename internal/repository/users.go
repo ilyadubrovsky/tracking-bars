@@ -11,4 +11,10 @@ type Users interface {
 	User(ctx context.Context, userID int64) (*domain.User, error)
 	Users(ctx context.Context) ([]*domain.User, error)
 	Delete(ctx context.Context, userID int64) error
+	UpdateProgressTable(
+		ctx context.Context,
+		userID int64,
+		progressTable *domain.ProgressTable,
+		gradesChanges []*domain.GradeChange,
+	) error
 }

@@ -55,3 +55,17 @@ func (s *svc) Delete(ctx context.Context, userID int64) error {
 
 	return nil
 }
+
+func (s *svc) UpdateProgressTable(
+	ctx context.Context,
+	userID int64,
+	progressTable *domain.ProgressTable,
+	gradesChanges []*domain.GradeChange,
+) error {
+	err := s.usersRepository.UpdateProgressTable(ctx, userID, progressTable, gradesChanges)
+	if err != nil {
+		return fmt.Errorf("usersRepository.UpdateProgressTable: %w", err)
+	}
+
+	return nil
+}

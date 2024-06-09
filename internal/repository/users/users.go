@@ -8,6 +8,7 @@ import (
 
 	"github.com/ilyadubrovsky/tracking-bars/internal/database"
 	"github.com/ilyadubrovsky/tracking-bars/internal/domain"
+	dboOutbox "github.com/ilyadubrovsky/tracking-bars/internal/repository/grades_changes_outbox/dbo"
 	"github.com/ilyadubrovsky/tracking-bars/internal/repository/users/dbo"
 	"github.com/jackc/pgx/v4"
 )
@@ -228,6 +229,11 @@ func (r *repo) Delete(ctx context.Context, userID int64) error {
 		WHERE user_id = $1
 	`
 
+	deleteGradesChangesOutboxQuery := `
+		DELETE FROM grades_changes_outbox
+		WHERE user_id = $1
+	`
+
 	deleteUserQuery := `
 		UPDATE users
 		SET deleted_at = $2
@@ -262,6 +268,15 @@ func (r *repo) Delete(ctx context.Context, userID int64) error {
 
 	_, err = tx.Exec(
 		ctx,
+		deleteGradesChangesOutboxQuery,
+		userID, // $1
+	)
+	if err != nil {
+		return fmt.Errorf("tx.Exec deleteGradesChangesOutboxQuery: %w", err)
+	}
+
+	_, err = tx.Exec(
+		ctx,
 		deleteUserQuery,
 		userID,  // $1
 		timeNow, // $2
@@ -275,4 +290,89 @@ func (r *repo) Delete(ctx context.Context, userID int64) error {
 	}
 
 	return nil
+}
+
+func (r *repo) UpdateProgressTable(
+	ctx context.Context,
+	userID int64,
+	progressTable *domain.ProgressTable,
+	gradesChanges []*domain.GradeChange,
+) error {
+	updateProgressTableQuery := `
+		UPDATE progress_tables
+		SET progress_table = $2, updated_at = $3
+		WHERE user_id = $1
+	`
+	progressTableDBO, err := dbo.ProgressTableFromDomain(progressTable)
+	if err != nil {
+		return fmt.Errorf("dbo.ProgressTableFromDomain: %w", err)
+	}
+
+	timeNow := time.Now()
+	outboxQuery, outboxValues, err := buildInsertGradesChangesOutboxQuery(gradesChanges, timeNow)
+	if err != nil {
+		return fmt.Errorf("buildInsertGradesChangesOutboxQuery: %w", err)
+	}
+
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("db.Begin: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	result, err := tx.Exec(
+		ctx,
+		updateProgressTableQuery,
+		userID,           // $1
+		progressTableDBO, // $2
+		timeNow,          // $3
+	)
+	if err != nil {
+		return fmt.Errorf("tx.Exec updateProgressTableQuery: %w", err)
+	}
+
+	if outboxQuery != "" && len(outboxValues) != 0 && result.RowsAffected() != 0 {
+		_, err = tx.Exec(
+			ctx,
+			outboxQuery,
+			outboxValues[0],
+			outboxValues[1],
+			outboxValues[2],
+		)
+		if err != nil {
+			return fmt.Errorf("tx.Exec outboxQuery: %w", err)
+		}
+	}
+
+	if err = tx.Commit(ctx); err != nil {
+		return fmt.Errorf("tx.Commit: %w", err)
+	}
+
+	return nil
+}
+
+func buildInsertGradesChangesOutboxQuery(gradesChanges []*domain.GradeChange, timeNow time.Time) (string, []interface{}, error) {
+	if len(gradesChanges) == 0 {
+		return "", nil, nil
+	}
+
+	query := `
+		INSERT INTO grades_changes_outbox (user_id, grades_change, created_at)
+		SELECT * FROM UNNEST($1::BIGINT[], $2::JSONB[], $3::TIMESTAMPTZ[])
+	`
+
+	userIDs := make([]int64, 0, len(gradesChanges))
+	dboChanges := make([][]byte, 0, len(gradesChanges))
+	createdAt := make([]time.Time, 0, len(gradesChanges))
+	for _, gradeChange := range gradesChanges {
+		userIDs = append(userIDs, gradeChange.UserID)
+		gradeChangeDBO, err := dboOutbox.GradeChangeDataFromDomain(gradeChange)
+		if err != nil {
+			return "", nil, fmt.Errorf("dbo.GradeChangeFromDomain: %w", err)
+		}
+		dboChanges = append(dboChanges, gradeChangeDBO)
+		createdAt = append(createdAt, timeNow)
+	}
+
+	return query, []interface{}{userIDs, dboChanges, createdAt}, nil
 }

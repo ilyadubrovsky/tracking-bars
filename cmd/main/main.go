@@ -7,9 +7,11 @@ import (
 
 	"github.com/ilyadubrovsky/tracking-bars/internal/config"
 	"github.com/ilyadubrovsky/tracking-bars/internal/database/pg"
+	gradeschangesoutboxrepo "github.com/ilyadubrovsky/tracking-bars/internal/repository/grades_changes_outbox"
 	"github.com/ilyadubrovsky/tracking-bars/internal/repository/users"
 	"github.com/ilyadubrovsky/tracking-bars/internal/service/bars"
 	"github.com/ilyadubrovsky/tracking-bars/internal/service/grades_changes"
+	"github.com/ilyadubrovsky/tracking-bars/internal/service/grades_changes_outbox"
 	"github.com/ilyadubrovsky/tracking-bars/internal/service/telegram"
 	"github.com/ilyadubrovsky/tracking-bars/internal/service/user"
 	"github.com/jellydator/ttlcache/v3"
@@ -33,6 +35,7 @@ func main() {
 	}
 
 	usersRepository := users.NewRepository(db)
+	gradesChangesOutboxRepository := gradeschangesoutboxrepo.NewRepository(db)
 	authorizationFailedRetriesCountCache := ttlcache.New[int64, int](
 		ttlcache.WithTTL[int64, int](60 * time.Minute),
 	)
@@ -47,6 +50,9 @@ func main() {
 		barsService,
 		cfg.Telegram,
 	)
+	if err != nil {
+		log.Fatalf("cant initialize telegram service: %v", err)
+	}
 	gradesChangesService := grades_changes.NewService(
 		telegramService,
 		barsService,
@@ -54,10 +60,13 @@ func main() {
 		authorizationFailedRetriesCountCache,
 		cfg.Bars,
 	)
-	if err != nil {
-		log.Fatalf("cant initialize telegram service: %v", err)
-	}
+	gradesChangesOutboxService := grades_changes_outbox.NewService(
+		gradesChangesOutboxRepository,
+		telegramService,
+		cfg.Bars,
+	)
 
+	go gradesChangesOutboxService.Start()
 	go authorizationFailedRetriesCountCache.Start()
 	go gradesChangesService.Start()
 	telegramService.Start()

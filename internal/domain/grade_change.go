@@ -3,6 +3,7 @@ package domain
 import "fmt"
 
 type GradeChange struct {
+	ID           int64
 	UserID       int64
 	Discipline   string
 	ControlEvent string

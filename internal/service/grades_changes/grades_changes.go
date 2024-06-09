@@ -16,7 +16,6 @@ import (
 	"github.com/ilyadubrovsky/tracking-bars/pkg/bars"
 	"github.com/jellydator/ttlcache/v3"
 	"github.com/rs/zerolog/log"
-	"gopkg.in/telebot.v3"
 )
 
 type svc struct {
@@ -184,35 +183,20 @@ func (s *svc) checkChanges(
 		return fmt.Errorf("barsSvc.GetProgressTable: %w", err)
 	}
 
+	changes := make([]*domain.GradeChange, 0, len(progressTable.Disciplines))
 	if user.ProgressTable != nil {
-		changes, err := compareProgressTables(user.ID, progressTable, user.ProgressTable)
+		changes, err = compareProgressTables(user.ID, progressTable, user.ProgressTable)
 		if err != nil && !errors.Is(err, ierrors.ErrProgressTableStructChanged) {
 			return fmt.Errorf("compareProgressTables: %w", err)
 		}
 		if len(changes) == 0 && !errors.Is(err, ierrors.ErrProgressTableStructChanged) {
 			return nil
 		}
-
-		for _, change := range changes {
-			sendMsgErr := s.telegramSvc.SendMessageWithOpts(
-				user.ID,
-				change.String(),
-				// TODO от зависимости телебота нужно избавиться
-				telebot.ModeMarkdown,
-			)
-			if sendMsgErr != nil {
-				log.Error().
-					Int64("user", change.UserID).
-					Msg("sending user's grade change failed")
-				// TODO реализовать outbox паттерн, чтобы не терять изменения
-				continue
-			}
-		}
 	}
 
-	user.ProgressTable = progressTable
-	if err = s.userSvc.Save(ctx, user); err != nil {
-		return fmt.Errorf("userSvc.Save: %w", err)
+	err = s.userSvc.UpdateProgressTable(ctx, user.ID, progressTable, changes)
+	if err != nil {
+		return fmt.Errorf("userSvc.UpdateProgressTable: %w", err)
 	}
 
 	return nil

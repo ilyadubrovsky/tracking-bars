@@ -35,6 +35,7 @@ type Bars struct {
 	CronWorkerPoolSize              int           `env:"BARS_CRON_WORKER_POOL_SIZE" env-default:"5"`
 	AuthorizationFailedRetriesCount int           `env:"BARS_AUTHORIZATION_FAILED_RETRIES_COUNT" env-default:"3"`
 	EncryptionKey                   string        `env:"BARS_ENCRYPTION_KEY"`
+	OutboxCronDelay                 time.Duration `env:"BARS_OUTBOX_CRON_DELAY" env-default:"5m"`
 }
 
 type Telegram struct {

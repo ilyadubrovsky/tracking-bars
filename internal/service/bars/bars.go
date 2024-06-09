@@ -92,6 +92,7 @@ func (s *svc) Logout(ctx context.Context, userID int64) error {
 	return nil
 }
 
+// TODO тут чета с разделением ответственности не то, надо поправить
 func (s *svc) GetProgressTable(
 	ctx context.Context,
 	username string,
