@@ -1,9 +1,12 @@
 package bars
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"github.com/PuerkitoBio/goquery"
+	"github.com/rs/zerolog/log"
 	"io"
 	"net/http"
 	"net/http/cookiejar"
@@ -21,8 +24,11 @@ const (
 	CookieNameSessionID = "ASP.NET_SessionId"
 )
 
+const msgUserNotRegistered = "Учётная запись МЭИ не зарегистрирована."
+
 var (
 	ErrAuthorizationFailed = errors.New("authorization in BARS failed")
+	ErrUserNotFound        = errors.New("user not found during authorization process")
 )
 
 type Client interface {
@@ -42,6 +48,22 @@ func NewClient(registrationURL string) Client {
 		httpClient:      &http.Client{Jar: jar},
 		registrationURL: registrationURL,
 	}
+}
+
+func isUserRegistered(body []byte) bool {
+	doc, err := goquery.NewDocumentFromReader(bytes.NewReader(body))
+	if err != nil {
+		log.Error().Msgf("failed to parse HTML document: %w", err)
+		return false
+	}
+
+	errorMessage := doc.Find(".alert-danger").Text()
+
+	if strings.ContainsAny(errorMessage, msgUserNotRegistered) {
+		return false
+	}
+
+	return true
 }
 
 func (c *client) Authorization(ctx context.Context, username, password string) error {
@@ -69,9 +91,13 @@ func (c *client) Authorization(ctx context.Context, username, password string) e
 		return fmt.Errorf("httpClient.Do: %w", err)
 	}
 
-	_, err = io.ReadAll(response.Body)
+	body, err := io.ReadAll(response.Body)
 	if err != nil {
 		return fmt.Errorf("io.ReadAll (response.Body): %w", err)
+	}
+
+	if !isUserRegistered(body) {
+		return ErrUserNotFound
 	}
 
 	defer response.Body.Close()
